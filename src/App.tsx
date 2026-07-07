@@ -540,6 +540,52 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Daily Goal Achievement Summary Bar */}
+                <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-widest">
+                        Overall Progress
+                      </span>
+                      <h3 className="text-lg font-serif font-medium text-editorial-dark mt-1">
+                        {dailyStats.withGoals > 0 ? (
+                          <>
+                            You have achieved <span className="font-mono text-editorial-accent">{dailyStats.completionRate}%</span> of your goals for today
+                          </>
+                        ) : (
+                          "No active metrics with daily goals configured"
+                        )}
+                      </h3>
+                    </div>
+                    {dailyStats.withGoals > 0 && (
+                      <span className="text-xs font-mono font-medium text-editorial-dark/60 bg-editorial-dark/5 border border-editorial-dark/10 px-2 py-1">
+                        {dailyStats.completedGoals} of {dailyStats.withGoals} Met
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    {/* Progress Bar Track and Fill */}
+                    <div className="h-3 w-full bg-editorial-dark/5 border border-editorial-dark/10 rounded-none overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${dailyStats.completionRate}%` }}
+                        transition={{ duration: 0.5, ease: 'easeOut' }}
+                        className="h-full bg-editorial-accent"
+                      />
+                    </div>
+                    
+                    {/* Editorial scale markers */}
+                    <div className="flex justify-between text-[9px] font-mono text-editorial-dark/40 pt-1.5 px-0.5">
+                      <span>0%</span>
+                      <span>25%</span>
+                      <span>50%</span>
+                      <span>75%</span>
+                      <span>100%</span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Daily Aggregates Bento Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* Habits completion card */}
