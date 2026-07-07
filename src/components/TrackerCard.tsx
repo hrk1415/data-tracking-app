@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Tracker, LogEntry, COLOR_MAP } from '../types';
 import { LucideIcon } from './LucideIcon';
-import { Plus, Minus, Check, MessageSquare, AlertCircle } from 'lucide-react';
+import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface TrackerCardProps {
@@ -34,6 +34,65 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
   }
 
   const latestLogNote = trackerLogs.length > 0 ? trackerLogs[trackerLogs.length - 1].note : '';
+
+  // Calculate current streak of goal met or logged consecutively backward from selectedDate
+  const streak = React.useMemo(() => {
+    const isGoalMetOnDate = (dateStr: string) => {
+      const tLogs = logs.filter(l => l.trackerId === tracker.id && l.date === dateStr);
+      if (tLogs.length === 0) return false;
+      
+      let val = 0;
+      if (tracker.type === 'counter') {
+        val = tLogs.reduce((sum, l) => sum + l.value, 0);
+      } else {
+        val = tLogs[tLogs.length - 1].value;
+      }
+      
+      const targetVal = tracker.targetValue;
+      if (targetVal !== undefined && targetVal > 0) {
+        return val >= targetVal;
+      }
+      // For trackers without targetValue, streak is counted by having at least 1 log entry
+      return tLogs.length > 0;
+    };
+
+    let count = 0;
+    let streakCount = 0;
+    let currentDateObj = new Date(selectedDate + 'T12:00:00');
+    const safetyLimit = Math.max(365, logs.length + 5);
+
+    const metToday = isGoalMetOnDate(selectedDate);
+    if (metToday) {
+      streakCount = 1;
+      while (count < safetyLimit) {
+        currentDateObj.setDate(currentDateObj.getDate() - 1);
+        const prevDateStr = currentDateObj.toISOString().split('T')[0];
+        if (isGoalMetOnDate(prevDateStr)) {
+          streakCount++;
+        } else {
+          break;
+        }
+        count++;
+      }
+    } else {
+      currentDateObj.setDate(currentDateObj.getDate() - 1);
+      const prevDateStr = currentDateObj.toISOString().split('T')[0];
+      if (isGoalMetOnDate(prevDateStr)) {
+        streakCount = 1;
+        while (count < safetyLimit) {
+          currentDateObj.setDate(currentDateObj.getDate() - 1);
+          const nextPrevDateStr = currentDateObj.toISOString().split('T')[0];
+          if (isGoalMetOnDate(nextPrevDateStr)) {
+            streakCount++;
+          } else {
+            break;
+          }
+          count++;
+        }
+      }
+    }
+    return streakCount;
+  }, [tracker, logs, selectedDate]);
 
   // Input states for custom forms
   const [numInput, setNumInput] = useState<string>('');
@@ -115,13 +174,22 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
         </div>
 
         {/* Goal Badge or Completion */}
-        {target && (
-          <div className="flex flex-col items-end">
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          {target && (
             <span className="text-[10px] font-mono font-medium text-editorial-accent bg-editorial-accent-light/50 border border-editorial-accent/20 rounded-none px-2.5 py-1">
               Goal: {target} {tracker.unit}
             </span>
-          </div>
-        )}
+          )}
+          {streak > 0 && (
+            <span 
+              className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-editorial-orange bg-editorial-orange-light/35 border border-editorial-orange/20 rounded-none px-2 py-0.5 select-none"
+              title={`${streak} day goal streak`}
+            >
+              <Flame size={11} className="fill-current animate-pulse text-editorial-orange" />
+              <span>{streak}d Streak</span>
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Description */}
