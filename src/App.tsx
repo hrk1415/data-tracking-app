@@ -29,9 +29,37 @@ import {
   Info,
   CheckCircle2,
   Flame,
-  X
+  X,
+  ArrowUp,
+  ArrowDown,
+  Minus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+function DiffIndicator({ diff, prefix = "" }: { diff: number; prefix?: string }) {
+  if (diff > 0) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-medium text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5" title="Increased compared to previous day">
+        <ArrowUp size={10} className="stroke-[2.5]" />
+        <span>+{diff}{prefix}</span>
+      </span>
+    );
+  }
+  if (diff < 0) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-medium text-red-600 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5" title="Decreased compared to previous day">
+        <ArrowDown size={10} className="stroke-[2.5]" />
+        <span>{diff}{prefix}</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-medium text-editorial-dark/40 bg-editorial-dark/5 border border-editorial-dark/10 px-1.5 py-0.5" title="No change compared to previous day">
+      <Minus size={10} className="stroke-[2.5]" />
+      <span>0{prefix}</span>
+    </span>
+  );
+}
 
 export default function App() {
   // Load initial data from localStorage (or defaults)
@@ -193,6 +221,60 @@ export default function App() {
       completionRate: trackersWithGoals > 0 ? Math.round((completedGoalsOnDate / trackersWithGoals) * 100) : 0,
     };
   }, [trackers, logs, selectedDate]);
+
+  // Previous day date string
+  const prevDateStr = useMemo(() => {
+    if (!selectedDate) return '';
+    const dateObj = new Date(selectedDate + 'T12:00:00');
+    dateObj.setDate(dateObj.getDate() - 1);
+    return dateObj.toISOString().split('T')[0];
+  }, [selectedDate]);
+
+  // Daily statistics for previous date
+  const prevDailyStats = useMemo(() => {
+    if (!prevDateStr) {
+      return {
+        activeCount: 0,
+        withGoals: 0,
+        completedGoals: 0,
+        completionRate: 0,
+        logVolume: 0,
+      };
+    }
+
+    const activeOnDate = trackers.length;
+    let completedGoalsOnDate = 0;
+    let trackersWithGoals = 0;
+
+    trackers.forEach(t => {
+      if (t.targetValue) {
+        trackersWithGoals++;
+        const tLogs = logs.filter(l => l.trackerId === t.id && l.date === prevDateStr);
+        const totalVal = t.type === 'counter'
+          ? tLogs.reduce((sum, l) => sum + l.value, 0)
+          : (tLogs.length > 0 ? tLogs[tLogs.length - 1].value : 0);
+
+        if (totalVal >= t.targetValue) {
+          completedGoalsOnDate++;
+        }
+      }
+    });
+
+    const logVolume = logs.filter(l => l.date === prevDateStr).length;
+
+    return {
+      activeCount: activeOnDate,
+      withGoals: trackersWithGoals,
+      completedGoals: completedGoalsOnDate,
+      completionRate: trackersWithGoals > 0 ? Math.round((completedGoalsOnDate / trackersWithGoals) * 100) : 0,
+      logVolume,
+    };
+  }, [trackers, logs, prevDateStr]);
+
+  // Daily log volume for selected date
+  const selectedDateLogVolume = useMemo(() => {
+    return logs.filter(l => l.date === selectedDate).length;
+  }, [logs, selectedDate]);
 
   // Overall statistics
   const totalLogsCount = logs.length;
@@ -461,46 +543,67 @@ export default function App() {
                 {/* Daily Aggregates Bento Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* Habits completion card */}
-                  <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center gap-4.5">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-emerald-light border border-editorial-emerald/20 text-editorial-emerald">
-                      <CheckCircle2 size={22} className="stroke-[1.5px]" />
-                    </div>
-                    <div>
-                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Goal Completion</span>
-                      <div className="flex items-baseline gap-1 mt-1">
-                        <span className="text-3xl font-mono font-light text-editorial-dark leading-none">{dailyStats.completedGoals}</span>
-                        <span className="text-xs font-serif italic text-editorial-dark/75">of {dailyStats.withGoals} habits</span>
+                  <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4.5">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-emerald-light border border-editorial-emerald/20 text-editorial-emerald">
+                        <CheckCircle2 size={22} className="stroke-[1.5px]" />
                       </div>
+                      <div>
+                        <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Goal Completion</span>
+                        <div className="flex items-baseline gap-1 mt-1">
+                          <span className="text-3xl font-mono font-light text-editorial-dark leading-none">{dailyStats.completedGoals}</span>
+                          <span className="text-xs font-serif italic text-editorial-dark/75">of {dailyStats.withGoals} habits</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0 self-center">
+                      <DiffIndicator diff={dailyStats.completedGoals - prevDailyStats.completedGoals} />
+                      <span className="text-[8px] font-mono text-editorial-dark/45 uppercase tracking-wider">vs yesterday</span>
                     </div>
                   </div>
 
                   {/* Completion Rate Indicator bar */}
-                  <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center gap-4.5">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-indigo-light border border-editorial-indigo/20 text-editorial-indigo">
-                      <TrendingUp size={22} className="stroke-[1.5px]" />
+                  <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4.5 flex-1 min-w-0">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-indigo-light border border-editorial-indigo/20 text-editorial-indigo">
+                        <TrendingUp size={22} className="stroke-[1.5px]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Daily Achievement</span>
+                        <span className="text-3xl font-mono font-light text-editorial-dark block mt-1 leading-none">{dailyStats.completionRate}%</span>
+                        {dailyStats.withGoals > 0 && (
+                          <div className="h-1 w-full bg-editorial-dark/10 rounded-none overflow-hidden mt-2">
+                            <div className="h-full bg-editorial-accent" style={{ width: `${dailyStats.completionRate}%` }} />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Daily Achievement</span>
-                      <span className="text-3xl font-mono font-light text-editorial-dark block mt-1 leading-none">{dailyStats.completionRate}%</span>
-                      {dailyStats.withGoals > 0 && (
-                        <div className="h-1 w-full bg-editorial-dark/10 rounded-none overflow-hidden mt-2">
-                          <div className="h-full bg-editorial-accent" style={{ width: `${dailyStats.completionRate}%` }} />
-                        </div>
-                      )}
+                    <div className="flex flex-col items-end gap-1 shrink-0 self-center">
+                      <DiffIndicator diff={dailyStats.completionRate - prevDailyStats.completionRate} prefix="%" />
+                      <span className="text-[8px] font-mono text-editorial-dark/45 uppercase tracking-wider">vs yesterday</span>
                     </div>
                   </div>
 
                   {/* Overall logging actions */}
-                  <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center gap-4.5">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-amber-light border border-editorial-amber/20 text-editorial-amber">
-                      <Award size={22} className="stroke-[1.5px]" />
-                    </div>
-                    <div>
-                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Historical Logs</span>
-                      <div className="flex items-baseline gap-1 mt-1">
-                        <span className="text-3xl font-mono font-light text-editorial-dark leading-none">{totalLogsCount}</span>
-                        <span className="text-xs font-serif italic text-editorial-dark/75">entries</span>
+                  <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4.5">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-amber-light border border-editorial-amber/20 text-editorial-amber">
+                        <Award size={22} className="stroke-[1.5px]" />
                       </div>
+                      <div>
+                        <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Historical Logs</span>
+                        <div className="flex items-baseline gap-1 mt-1">
+                          <span className="text-3xl font-mono font-light text-editorial-dark leading-none">{totalLogsCount}</span>
+                          <span className="text-xs font-serif italic text-editorial-dark/75">entries</span>
+                        </div>
+                        <div className="text-[9px] font-mono text-editorial-dark/60 mt-1 flex items-center gap-1">
+                          <span>Today: {selectedDateLogVolume} logs</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0 self-center">
+                      <DiffIndicator diff={selectedDateLogVolume - prevDailyStats.logVolume} />
+                      <span className="text-[8px] font-mono text-editorial-dark/45 uppercase tracking-wider">vs yesterday</span>
                     </div>
                   </div>
                 </div>
