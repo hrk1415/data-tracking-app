@@ -108,5 +108,6 @@ export interface DailyReflection {
   updatedAt?: string;
   milestones?: Milestone[];
   showMilestonesOnDashboard?: boolean;
+  goalNotes?: Record<string, string>; // Maps trackerId -> explanation/justification
 }
 

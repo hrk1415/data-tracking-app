@@ -230,6 +230,49 @@ export default function App() {
     saveReflections(updated);
   };
 
+  const handleSaveGoalNote = (date: string, trackerId: string, noteText: string) => {
+    let updated: DailyReflection[];
+    const existingIndex = reflections.findIndex(r => r.date === date);
+    if (existingIndex > -1) {
+      updated = [...reflections];
+      const existing = updated[existingIndex];
+      const existingNotes = existing.goalNotes || {};
+      
+      if (noteText.trim() === '') {
+        const { [trackerId]: _, ...rest } = existingNotes;
+        updated[existingIndex] = {
+          ...existing,
+          goalNotes: rest,
+        };
+      } else {
+        updated[existingIndex] = {
+          ...existing,
+          goalNotes: {
+            ...existingNotes,
+            [trackerId]: noteText.trim(),
+          },
+        };
+      }
+    } else {
+      if (noteText.trim() === '') return;
+      updated = [
+        ...reflections,
+        {
+          date,
+          text: '',
+          updatedAt: new Date().toISOString(),
+          milestones: [],
+          showMilestonesOnDashboard: true,
+          goalNotes: {
+            [trackerId]: noteText.trim(),
+          },
+        }
+      ];
+    }
+    setReflections(updated);
+    saveReflections(updated);
+  };
+
   const handleAddMilestone = (date: string, time: string, text: string, importance?: 'low' | 'medium' | 'high') => {
     if (!text.trim() || !time) return;
     const newMilestone: Milestone = {
@@ -1085,6 +1128,93 @@ export default function App() {
                       <span>100%</span>
                     </div>
                   </div>
+
+                  {/* Daily Goal Target List & Justifications */}
+                  {trackers.some(t => t.targetValue !== undefined && t.targetValue > 0) && (
+                    <div className="border-t border-editorial-dark/10 pt-4 space-y-3">
+                      <h4 className="text-[10px] font-mono text-editorial-accent tracking-widest uppercase font-semibold">
+                        Daily Habit Checklists & Justifications
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {trackers
+                          .filter(t => t.targetValue !== undefined && t.targetValue > 0)
+                          .map(t => {
+                            const trackerLogs = logs.filter(l => l.trackerId === t.id && l.date === selectedDate);
+                            const currentValue = t.type === 'counter'
+                              ? trackerLogs.reduce((sum, l) => sum + l.value, 0)
+                              : (trackerLogs.length > 0 ? trackerLogs[trackerLogs.length - 1].value : 0);
+                            const isMet = currentValue >= t.targetValue!;
+                            
+                            // Retrieve saved goal note if any
+                            const dateReflection = reflections.find(r => r.date === selectedDate);
+                            const currentNote = dateReflection?.goalNotes?.[t.id] || '';
+                            
+                            return (
+                              <div
+                                key={t.id}
+                                className={`p-3.5 border transition-all flex flex-col justify-between space-y-2 ${
+                                  isMet
+                                    ? 'bg-editorial-emerald-light/10 border-editorial-emerald/25'
+                                    : 'bg-editorial-rose-light/10 border-editorial-rose/25'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                                      isMet ? 'bg-editorial-emerald' : 'bg-editorial-rose'
+                                    }`} />
+                                    <span className="text-xs font-mono font-bold text-editorial-dark/85 truncate">
+                                      {t.name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="text-[11px] font-mono text-editorial-dark/70">
+                                      {currentValue} / {t.targetValue} {t.unit || ''}
+                                    </span>
+                                    {isMet ? (
+                                      <span className="text-[10px] font-mono font-bold uppercase text-editorial-emerald bg-editorial-emerald/15 px-1.5 py-0.5 border border-editorial-emerald/20">
+                                        Met
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-mono font-bold uppercase text-editorial-rose bg-editorial-rose/15 px-1.5 py-0.5 border border-editorial-rose/20">
+                                        Unmet
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Notes field for unmet goals */}
+                                {!isMet ? (
+                                  <div className="space-y-1 pt-1 border-t border-editorial-dark/5">
+                                    <label className="block text-[9px] font-mono uppercase tracking-wider text-editorial-dark/50">
+                                      Justification / Explanation:
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={currentNote}
+                                      onChange={(e) => handleSaveGoalNote(selectedDate, t.id, e.target.value)}
+                                      placeholder="Add a reason or note for not meeting this goal..."
+                                      className="w-full bg-transparent border-0 border-b border-editorial-dark/15 hover:border-editorial-dark/30 focus:border-editorial-accent p-1 text-[11px] font-serif italic text-editorial-dark outline-hidden focus:ring-0 placeholder:text-editorial-dark/30 placeholder:italic transition-all"
+                                    />
+                                  </div>
+                                ) : currentNote ? (
+                                  <div className="text-[10px] font-serif italic text-editorial-dark/50 pt-1 border-t border-editorial-dark/5 flex items-center justify-between">
+                                    <span>Note: "{currentNote}"</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveGoalNote(selectedDate, t.id, '')}
+                                      className="text-[9px] font-mono uppercase text-editorial-dark/40 hover:text-rose-600 transition-colors"
+                                    >
+                                      Clear Note
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
 
                   {dailyStats.withGoals > 0 && (
                     <div className="pt-3.5 border-t border-editorial-dark/10 flex flex-wrap items-center justify-between gap-3">
