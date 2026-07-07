@@ -803,9 +803,28 @@ export default function App() {
                     )}
                   </div>
 
-                  <div className="relative">
+                  <div className="relative group/progress">
+                    {/* Hover Tooltip showing exact completion count and total target trackers */}
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-xs bg-editorial-dark text-editorial-bg text-[11px] px-3 py-2 border border-editorial-dark/20 shadow-md opacity-0 group-hover/progress:opacity-100 transition-opacity duration-200 pointer-events-none z-10 flex flex-col gap-0.5">
+                      <span className="font-serif font-medium text-white text-xs">Daily Goal Achievement</span>
+                      <span className="font-mono text-editorial-bg/85">
+                        {dailyStats.withGoals > 0 
+                          ? `${dailyStats.completedGoals} of ${dailyStats.withGoals} target trackers met (${dailyStats.completionRate}%)`
+                          : 'No active metrics with daily goals configured'
+                        }
+                      </span>
+                      {/* Tooltip Arrow */}
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-editorial-dark" />
+                    </div>
+
                     {/* Progress Bar Track and Fill */}
-                    <div className="h-3 w-full bg-editorial-dark/5 border border-editorial-dark/10 rounded-none overflow-hidden">
+                    <div 
+                      className="h-3 w-full bg-editorial-dark/5 border border-editorial-dark/10 rounded-none overflow-hidden cursor-help"
+                      title={dailyStats.withGoals > 0 
+                        ? `${dailyStats.completedGoals} of ${dailyStats.withGoals} daily goal target trackers met (${dailyStats.completionRate}%)`
+                        : 'No active metrics with daily goals configured'
+                      }
+                    >
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${dailyStats.completionRate}%` }}
