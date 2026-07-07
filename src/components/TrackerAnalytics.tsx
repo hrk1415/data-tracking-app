@@ -18,7 +18,8 @@ import {
   Loader2,
   RefreshCw,
   Lightbulb,
-  Activity
+  Activity,
+  Table
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -198,6 +199,54 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       };
     });
   }, [selectedTracker, logs, dateRangeList]);
+
+  // 30-day stats calculations for each tracker
+  const last30DaysStats = useMemo(() => {
+    const list: string[] = [];
+    const today = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+      list.push(d.toISOString().split('T')[0]);
+    }
+
+    return trackers.map(tracker => {
+      const trackerLogs = logs.filter(l => l.trackerId === tracker.id && list.includes(l.date));
+      const dailyValues: number[] = [];
+      
+      list.forEach(dateStr => {
+        const dayLogs = trackerLogs.filter(l => l.date === dateStr);
+        if (dayLogs.length > 0) {
+          if (tracker.type === 'counter') {
+            const sum = dayLogs.reduce((acc, log) => acc + log.value, 0);
+            dailyValues.push(sum);
+          } else {
+            dailyValues.push(dayLogs[dayLogs.length - 1].value);
+          }
+        }
+      });
+
+      let mean = 0;
+      let min = 0;
+      let max = 0;
+      const count = dailyValues.length;
+
+      if (count > 0) {
+        const sum = dailyValues.reduce((acc, v) => acc + v, 0);
+        mean = Math.round((sum / count) * 10) / 10;
+        min = Math.min(...dailyValues);
+        max = Math.max(...dailyValues);
+      }
+
+      return {
+        tracker,
+        mean,
+        min,
+        max,
+        loggedDays: count,
+        hasData: count > 0,
+      };
+    });
+  }, [trackers, logs]);
 
   // Calculations for KPI Cards
   const stats = useMemo(() => {
@@ -1005,6 +1054,111 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           </div>
         </div>
       )}
+
+      {/* 30-Day Tracker Statistics Summary */}
+      <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-6">
+        <div className="flex items-center gap-2.5 border-b border-editorial-dark/10 pb-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-editorial-accent-light border border-editorial-accent/20 text-editorial-accent">
+            <Table size={20} className="stroke-[1.5px]" />
+          </div>
+          <div>
+            <h3 className="font-serif font-medium text-lg text-editorial-dark">
+              30-Day Tracker Statistics Summary
+            </h3>
+            <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
+              Tabular breakdown of mean, minimum, and maximum values over the last 30 days
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto border border-editorial-dark/10">
+          <table className="w-full text-left border-collapse min-w-[600px]">
+            <thead>
+              <tr className="border-b border-editorial-dark/15 bg-editorial-accent-light/40 text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">
+                <th className="px-5 py-3">Tracker</th>
+                <th className="px-5 py-3">Type</th>
+                <th className="px-5 py-3 text-right">30D Mean</th>
+                <th className="px-5 py-3 text-right">30D Min</th>
+                <th className="px-5 py-3 text-right">30D Max</th>
+                <th className="px-5 py-3 text-right">Days Logged</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-editorial-dark/10 text-xs">
+              {last30DaysStats.map(({ tracker, mean, min, max, loggedDays, hasData }) => {
+                const colorStyles = COLOR_MAP[tracker.color] || COLOR_MAP.emerald;
+                
+                const formatVal = (val: number, isMinMax?: boolean) => {
+                  if (tracker.type === 'boolean') {
+                    if (isMinMax) {
+                      return val === 1 ? 'Yes' : 'No';
+                    }
+                    return `${Math.round(val * 100)}% Yes`;
+                  }
+                  if (tracker.type === 'rating') {
+                    return `${val} / 5`;
+                  }
+                  return `${val}${tracker.unit ? ` ${tracker.unit}` : ''}`;
+                };
+
+                return (
+                  <tr key={tracker.id} className="hover:bg-editorial-accent-light/20 transition-colors">
+                    {/* Tracker details */}
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-none text-white ${colorStyles.bg} border border-editorial-dark/10`}>
+                          <LucideIcon name={tracker.icon} size={15} />
+                        </div>
+                        <div>
+                          <span className="font-serif font-medium text-editorial-dark block leading-tight">
+                            {tracker.name}
+                          </span>
+                          <span className="text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest mt-0.5 block">
+                            {tracker.category}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Tracker Type */}
+                    <td className="px-5 py-3.5">
+                      <span className="inline-flex items-center text-[10px] font-mono text-editorial-dark/60 bg-editorial-dark/5 border border-editorial-dark/10 px-2 py-0.5 capitalize font-medium">
+                        {tracker.type}
+                      </span>
+                    </td>
+
+                    {/* Mean */}
+                    <td className="px-5 py-3.5 text-right font-mono text-editorial-dark font-medium">
+                      {hasData ? formatVal(mean) : <span className="text-editorial-dark/35 font-sans">—</span>}
+                    </td>
+
+                    {/* Min */}
+                    <td className="px-5 py-3.5 text-right font-mono text-editorial-dark">
+                      {hasData ? formatVal(min, true) : <span className="text-editorial-dark/35 font-sans">—</span>}
+                    </td>
+
+                    {/* Max */}
+                    <td className="px-5 py-3.5 text-right font-mono text-editorial-dark">
+                      {hasData ? formatVal(max, true) : <span className="text-editorial-dark/35 font-sans">—</span>}
+                    </td>
+
+                    {/* Completion rate / Days Logged */}
+                    <td className="px-5 py-3.5 text-right">
+                      <div className="inline-flex flex-col items-end">
+                        <span className="font-mono text-editorial-dark font-medium">
+                          {loggedDays} / 30
+                        </span>
+                        <span className="text-[9px] font-sans italic text-editorial-dark/50">
+                          ({Math.round((loggedDays / 30) * 100)}%)
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
