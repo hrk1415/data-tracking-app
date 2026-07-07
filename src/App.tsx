@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import confetti from 'canvas-confetti';
 import { Tracker, LogEntry, CATEGORIES, COLOR_MAP, DailyReflection, Milestone } from './types';
 import { loadData, saveTrackers, saveLogs, saveReflections, exportDataAsJson, importDataFromJson } from './utils/storage';
 import { importLogsFromCSV } from './utils/csvParser';
@@ -466,6 +467,46 @@ export default function App() {
       completionRate: trackersWithGoals > 0 ? Math.round((completedGoalsOnDate / trackersWithGoals) * 100) : 0,
     };
   }, [trackers, logs, selectedDate]);
+
+  // Track dates where confetti celebration has already played in the current session
+  const celebratedDatesRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (currentTab === 'dashboard' && dailyStats.withGoals > 0 && dailyStats.completionRate === 100) {
+      if (!celebratedDatesRef.current[selectedDate]) {
+        celebratedDatesRef.current[selectedDate] = true;
+        
+        // Play double side-cannon celebration confetti
+        const end = Date.now() + 1000;
+        const frame = () => {
+          confetti({
+            particleCount: 4,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0, y: 0.75 },
+            colors: ['#047857', '#3b82f6', '#f59e0b', '#ec4899', '#10b981']
+          });
+          confetti({
+            particleCount: 4,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1, y: 0.75 },
+            colors: ['#047857', '#3b82f6', '#f59e0b', '#ec4899', '#10b981']
+          });
+
+          if (Date.now() < end) {
+            requestAnimationFrame(frame);
+          }
+        };
+        frame();
+      }
+    } else if (dailyStats.withGoals > 0 && dailyStats.completionRate < 100) {
+      // Reset so they can achieve and trigger the celebration again if logs/goals change
+      if (celebratedDatesRef.current[selectedDate]) {
+        delete celebratedDatesRef.current[selectedDate];
+      }
+    }
+  }, [dailyStats.completionRate, dailyStats.withGoals, selectedDate, currentTab]);
 
   // Check if daily reminder should be displayed based on goals and set time
   const showReminderBanner = useMemo(() => {
