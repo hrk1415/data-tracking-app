@@ -435,6 +435,53 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportCSV = () => {
+    const escapeCSV = (str: any) => {
+      if (str === null || str === undefined) return '';
+      const stringified = String(str);
+      if (stringified.includes(',') || stringified.includes('"') || stringified.includes('\n') || stringified.includes('\r')) {
+        return `"${stringified.replace(/"/g, '""')}"`;
+      }
+      return stringified;
+    };
+
+    const headers = ['Date', 'Tracker Name', 'Category', 'Value', 'Unit', 'Goal', 'Notes', 'Logged At'];
+    
+    // Sort logs chronologically by date and time
+    const sortedLogs = [...logs].sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      return (a.timestamp || '').localeCompare(b.timestamp || '');
+    });
+
+    const rows = sortedLogs.map(l => {
+      const tracker = trackers.find(t => t.id === l.trackerId);
+      return [
+        escapeCSV(l.date),
+        escapeCSV(tracker ? tracker.name : 'Unknown Tracker'),
+        escapeCSV(tracker ? tracker.category : ''),
+        escapeCSV(l.value),
+        escapeCSV(tracker ? tracker.unit : ''),
+        escapeCSV(tracker?.targetValue !== undefined ? tracker.targetValue : ''),
+        escapeCSV(l.note || ''),
+        escapeCSV(l.timestamp || '')
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `data_tracker_logs_${selectedDate}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Date representation
   const formattedSelectedDate = useMemo(() => {
     if (!selectedDate) return '';
@@ -520,6 +567,17 @@ export default function App() {
                 >
                   <Download size={14} />
                   Export Data (JSON)
+                </button>
+
+                {/* Export CSV Button */}
+                <button
+                  type="button"
+                  id="export-csv-button"
+                  onClick={handleExportCSV}
+                  className="flex items-center gap-1.5 bg-editorial-orange-light/30 hover:bg-editorial-orange/20 border border-editorial-orange/30 text-editorial-orange font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer"
+                >
+                  <Download size={14} />
+                  Export Logs (CSV)
                 </button>
 
                 {/* Import File Button */}
