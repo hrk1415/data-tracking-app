@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300..700;1,300..700&family=Inter:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-editorial-bg: #f9f8f6;
+  --color-editorial-dark: #1a1a1a;
+  --color-editorial-accent: #a1824a;
+  --color-editorial-accent-light: #f5eedf;
+
+  --color-editorial-emerald: #6b7f70;
+  --color-editorial-emerald-light: #f0f3f1;
+  --color-editorial-blue: #6a7f96;
+  --color-editorial-blue-light: #f1f4f7;
+  --color-editorial-indigo: #545b73;
+  --color-editorial-indigo-light: #eff0f4;
+  --color-editorial-violet: #8c7b8c;
+  --color-editorial-violet-light: #f7f4f7;
+  --color-editorial-amber: #a1824a;
+  --color-editorial-amber-light: #faf5eb;
+  --color-editorial-rose: #b07d7d;
+  --color-editorial-rose-light: #faf1f1;
+  --color-editorial-orange: #b38364;
+  --color-editorial-orange-light: #faf3ef;
+}
+
+body {
+  background-color: #f9f8f6;
+  color: #1a1a1a;
+}

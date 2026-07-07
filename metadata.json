@@ -1,0 +1,6 @@
+{
+  "name": "Data Tracker",
+  "description": "An elegant, customizable personal metric and data tracking web application to log, analyze, and visualize daily habits and statistics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
