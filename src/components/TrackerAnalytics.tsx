@@ -8,6 +8,7 @@ import { Tracker, LogEntry, COLOR_MAP } from '../types';
 import { LucideIcon } from './LucideIcon';
 import {
   TrendingUp,
+  TrendingDown,
   Flame,
   Calendar,
   Award,
@@ -246,6 +247,61 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
         hasData: count > 0,
       };
     });
+  }, [trackers, logs]);
+
+  // Weekly Summary comparison calculations (past 7 days vs previous 7 days)
+  const weeklySummaryStats = useMemo(() => {
+    const today = new Date();
+    
+    // Get past 7 days (including today)
+    const last7Days: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+      last7Days.push(d.toISOString().split('T')[0]);
+    }
+
+    // Get previous 7 days (days 8-14)
+    const prev7Days: string[] = [];
+    for (let i = 7; i < 14; i++) {
+      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+      prev7Days.push(d.toISOString().split('T')[0]);
+    }
+
+    // Filter logs in last 7 days and prev 7 days
+    const last7Logs = logs.filter(l => last7Days.includes(l.date));
+    const prev7Logs = logs.filter(l => prev7Days.includes(l.date));
+
+    const last7Count = last7Logs.length;
+    const prev7Count = prev7Logs.length;
+
+    const diff = last7Count - prev7Count;
+    let percentChange = 0;
+    if (prev7Count > 0) {
+      percentChange = Math.round((diff / prev7Count) * 100);
+    } else if (last7Count > 0) {
+      percentChange = 100;
+    }
+
+    // Group tracker breakdowns for last 7 vs prev 7 days
+    const trackerBreakdown = trackers.map(tracker => {
+      const tLast7 = last7Logs.filter(l => l.trackerId === tracker.id).length;
+      const tPrev7 = prev7Logs.filter(l => l.trackerId === tracker.id).length;
+      const tDiff = tLast7 - tPrev7;
+      return {
+        tracker,
+        last7: tLast7,
+        prev7: tPrev7,
+        diff: tDiff
+      };
+    });
+
+    return {
+      last7Count,
+      prev7Count,
+      diff,
+      percentChange,
+      trackerBreakdown
+    };
   }, [trackers, logs]);
 
   // Calculations for KPI Cards
@@ -1021,6 +1077,120 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                 <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
                   Compare multi-tracker progress side-by-side grouped by metric type
                 </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Weekly Summary Card */}
+          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Overall Volume Metric Column */}
+            <div className="md:col-span-1 flex flex-col justify-between border-b md:border-b-0 md:border-r border-editorial-dark/10 pb-6 md:pb-0 md:pr-6 space-y-4">
+              <div>
+                <span className="inline-flex items-center text-[10px] font-mono font-medium text-editorial-accent bg-editorial-accent-light border border-editorial-accent/25 px-2 py-0.5 rounded-none uppercase tracking-wider mb-2">
+                  7-Day Aggregated Volume
+                </span>
+                <h4 className="font-serif font-medium text-xl text-editorial-dark leading-tight">
+                  Log Entry Activity
+                </h4>
+                <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">
+                  Comparing all logged tracker entries over the past two weeks
+                </p>
+              </div>
+
+              <div className="py-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-5xl font-mono font-light text-editorial-dark leading-none">
+                    {weeklySummaryStats.last7Count}
+                  </span>
+                  <span className="text-xs font-serif italic text-editorial-dark/60">entries</span>
+                </div>
+                
+                <div className="flex items-center gap-2 mt-3.5">
+                  {weeklySummaryStats.diff > 0 ? (
+                    <div className="inline-flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 text-xs font-mono px-2 py-0.5">
+                      <TrendingUp size={14} className="stroke-[2px]" />
+                      <span>+{weeklySummaryStats.percentChange}%</span>
+                    </div>
+                  ) : weeklySummaryStats.diff < 0 ? (
+                    <div className="inline-flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 text-rose-800 text-xs font-mono px-2 py-0.5">
+                      <TrendingDown size={14} className="stroke-[2px]" />
+                      <span>{weeklySummaryStats.percentChange}%</span>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1 bg-editorial-dark/5 border border-editorial-dark/10 text-editorial-dark/60 text-xs font-mono px-2 py-0.5">
+                      <span>0% change</span>
+                    </div>
+                  )}
+                  <span className="text-[11px] text-editorial-dark/55 font-sans">
+                    vs. {weeklySummaryStats.prev7Count} in previous 7D
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-[10px] font-mono text-editorial-dark/50 pt-2 border-t border-editorial-dark/5">
+                Activity volume signals logging consistency and momentum.
+              </div>
+            </div>
+
+            {/* Tracker-by-tracker Breakdown Column */}
+            <div className="md:col-span-2 space-y-4">
+              <div>
+                <h5 className="font-serif font-medium text-sm text-editorial-dark">
+                  Log Volume Breakdown by Tracker
+                </h5>
+                <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
+                  Log frequency per tracker (last 7 days vs previous 7 days)
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-1">
+                {weeklySummaryStats.trackerBreakdown.map(({ tracker, last7, prev7, diff }) => {
+                  const colorStyles = COLOR_MAP[tracker.color] || COLOR_MAP.emerald;
+                  return (
+                    <div key={tracker.id} className="p-3 bg-editorial-accent-light/10 border border-editorial-dark/10 flex items-center justify-between gap-3 hover:bg-editorial-accent-light/25 transition-all">
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-none text-white ${colorStyles.bg} border border-editorial-dark/10`}>
+                          <LucideIcon name={tracker.icon} size={13} />
+                        </div>
+                        <div className="truncate">
+                          <span className="font-serif font-medium text-xs text-editorial-dark block truncate leading-tight font-medium">
+                            {tracker.name}
+                          </span>
+                          <span className="text-[8px] font-mono text-editorial-dark/40 uppercase tracking-wider block mt-0.5">
+                            {tracker.category}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="text-right font-mono">
+                          <div className="text-xs font-medium text-editorial-dark">
+                            {last7} <span className="text-[10px] text-editorial-dark/40">/ 7d</span>
+                          </div>
+                          <div className="text-[9px] text-editorial-dark/40">
+                            {prev7} prev
+                          </div>
+                        </div>
+
+                        <div className="w-12 text-right shrink-0">
+                          {diff > 0 ? (
+                            <span className="text-[10px] font-mono font-medium text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5">
+                              +{diff}
+                            </span>
+                          ) : diff < 0 ? (
+                            <span className="text-[10px] font-mono font-medium text-rose-700 bg-rose-500/10 border border-rose-500/20 px-1.5 py-0.5">
+                              {diff}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono text-editorial-dark/45 bg-editorial-dark/5 border border-editorial-dark/10 px-1.5 py-0.5">
+                              0
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
