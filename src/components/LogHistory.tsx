@@ -66,7 +66,21 @@ export function LogHistory({ trackers, logs, onDeleteLog, onUpdateLog }: LogHist
         const query = searchQuery.toLowerCase();
         const matchesName = tracker.name.toLowerCase().includes(query);
         const matchesNote = log.note?.toLowerCase().includes(query) || false;
-        const matchesDate = log.date.includes(query);
+        
+        // Get various date formats for flexible search matching
+        const formattedShort = formatDateDisplay(log.date).toLowerCase();
+        const dFull = new Date(log.date + 'T12:00:00');
+        const formattedLong = dFull.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric'
+        }).toLowerCase();
+
+        const matchesDate = log.date.includes(query) || 
+                            formattedShort.includes(query) || 
+                            formattedLong.includes(query);
+
         if (!matchesName && !matchesNote && !matchesDate) {
           return false;
         }
