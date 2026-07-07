@@ -216,14 +216,24 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
               Goal: {target} {tracker.unit}
             </span>
           )}
-          {streak > 0 && (
+          {tracker.targetValue !== undefined && tracker.targetValue > 0 && streak > 0 ? (
             <span 
-              className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-editorial-orange bg-editorial-orange-light/35 border border-editorial-orange/20 rounded-none px-2 py-0.5 select-none"
-              title={`${streak} day goal streak`}
+              className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold text-editorial-orange bg-editorial-orange-light/35 border border-editorial-orange/20 rounded-none px-2.5 py-1 select-none"
+              title={`${streak} day goal achievement streak`}
             >
-              <Flame size={11} className="fill-current animate-pulse text-editorial-orange" />
-              <span>{streak}d Streak</span>
+              <Flame size={12} className="fill-current animate-pulse text-editorial-orange" />
+              <span>Current Streak: {streak} {streak === 1 ? 'day' : 'days'}</span>
             </span>
+          ) : (
+            tracker.targetValue === undefined && streak > 0 && (
+              <span 
+                className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-editorial-dark/50 bg-editorial-dark/[0.03] border border-editorial-dark/15 rounded-none px-2 py-0.5 select-none"
+                title={`${streak} consecutive logging days`}
+              >
+                <Flame size={11} className="fill-current text-editorial-dark/30" />
+                <span>{streak}d Streak</span>
+              </span>
+            )
           )}
           {trendData && (
             <span 
