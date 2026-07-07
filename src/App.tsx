@@ -32,7 +32,8 @@ import {
   X,
   ArrowUp,
   ArrowDown,
-  Minus
+  Minus,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -69,6 +70,8 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'analytics' | 'history' | 'manage'>('dashboard');
   const [isAddTrackerOpen, setIsAddTrackerOpen] = useState(false);
   const [isBackupSectionOpen, setIsBackupSectionOpen] = useState(false);
+  const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
+  const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
 
   // Initialize state on client mount
   useEffect(() => {
@@ -281,6 +284,93 @@ export default function App() {
   const healthCategoryCount = trackers.filter(t => t.category === 'health').length;
   const fitnessCategoryCount = trackers.filter(t => t.category === 'fitness').length;
   const productivityCategoryCount = trackers.filter(t => t.category === 'productivity').length;
+
+  // Quick Goal: Toggles 100% completion for all daily goals
+  const handleQuickGoalToggle = () => {
+    const trackersWithGoals = trackers.filter(t => t.targetValue !== undefined && t.targetValue > 0);
+    if (trackersWithGoals.length === 0) return;
+
+    const isAlreadyComplete = dailyStats.withGoals > 0 && dailyStats.completedGoals === dailyStats.withGoals;
+
+    if (isAlreadyComplete) {
+      // Toggle off: Undo last action if backup exists, otherwise clear logs for today's goals
+      if (lastToggleBackup && lastToggleDate === selectedDate) {
+        handleUndoToggle();
+      } else {
+        // Clear all logs for goals on the selected date
+        const updatedLogs = logs.filter(l => {
+          if (l.date !== selectedDate) return true;
+          const tracker = trackers.find(t => t.id === l.trackerId);
+          return !(tracker && tracker.targetValue !== undefined && tracker.targetValue > 0);
+        });
+        setLastToggleBackup(logs);
+        setLastToggleDate(selectedDate);
+        setLogs(updatedLogs);
+        saveLogs(updatedLogs);
+      }
+      return;
+    }
+
+    // Toggle on: Fill all goals to 100%
+    setLastToggleBackup(logs);
+    setLastToggleDate(selectedDate);
+
+    let updatedLogs = [...logs];
+
+    trackersWithGoals.forEach(t => {
+      const target = t.targetValue!;
+      const tLogs = updatedLogs.filter(l => l.trackerId === t.id && l.date === selectedDate);
+      const currentVal = t.type === 'counter'
+        ? tLogs.reduce((sum, l) => sum + l.value, 0)
+        : (tLogs.length > 0 ? tLogs[tLogs.length - 1].value : 0);
+
+      if (currentVal < target) {
+        if (t.type === 'counter') {
+          const diff = target - currentVal;
+          const newLog: LogEntry = {
+            id: `log-quick-${Date.now()}-${t.id}-${Math.random().toString(36).substring(2, 6)}`,
+            trackerId: t.id,
+            value: diff,
+            date: selectedDate,
+            note: "Quick Goal Fill",
+            timestamp: new Date().toISOString(),
+          };
+          updatedLogs.push(newLog);
+        } else {
+          // Numeric, rating, boolean
+          const finalVal = t.type === 'boolean' ? 1 : target;
+          if (tLogs.length > 0) {
+            const latest = tLogs[tLogs.length - 1];
+            updatedLogs = updatedLogs.map(l =>
+              l.id === latest.id ? { ...l, value: finalVal, timestamp: new Date().toISOString() } : l
+            );
+          } else {
+            const newLog: LogEntry = {
+              id: `log-quick-${Date.now()}-${t.id}`,
+              trackerId: t.id,
+              value: finalVal,
+              date: selectedDate,
+              note: "Quick Goal Fill",
+              timestamp: new Date().toISOString(),
+            };
+            updatedLogs.push(newLog);
+          }
+        }
+      }
+    });
+
+    setLogs(updatedLogs);
+    saveLogs(updatedLogs);
+  };
+
+  const handleUndoToggle = () => {
+    if (lastToggleBackup && lastToggleDate === selectedDate) {
+      setLogs(lastToggleBackup);
+      saveLogs(lastToggleBackup);
+      setLastToggleBackup(null);
+      setLastToggleDate(null);
+    }
+  };
 
   // File import backing trigger
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -584,6 +674,48 @@ export default function App() {
                       <span>100%</span>
                     </div>
                   </div>
+
+                  {dailyStats.withGoals > 0 && (
+                    <div className="pt-3.5 border-t border-editorial-dark/10 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          id="quick-goal-toggle"
+                          onClick={handleQuickGoalToggle}
+                          className="flex items-center gap-2 group cursor-pointer select-none"
+                        >
+                          <div
+                            className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out border ${
+                              dailyStats.completionRate === 100
+                                ? 'bg-editorial-accent border-editorial-accent'
+                                : 'bg-editorial-dark/10 border-editorial-dark/15'
+                            }`}
+                          >
+                            <div
+                              className={`w-3.5 h-3.5 rounded-full bg-editorial-bg shadow-sm transform transition-transform duration-200 ease-in-out ${
+                                dailyStats.completionRate === 100 ? 'translate-x-3.5' : 'translate-x-0'
+                              }`}
+                            />
+                          </div>
+                          <span className="text-[10px] font-mono font-medium text-editorial-dark/60 group-hover:text-editorial-dark transition-colors uppercase tracking-wider">
+                            Quick Goal 100% Complete
+                          </span>
+                        </button>
+                      </div>
+
+                      {lastToggleBackup && lastToggleDate === selectedDate && (
+                        <button
+                          type="button"
+                          id="quick-goal-undo"
+                          onClick={handleUndoToggle}
+                          className="inline-flex items-center gap-1.5 text-[10px] font-mono font-medium text-editorial-accent hover:underline cursor-pointer"
+                        >
+                          <RotateCcw size={11} className="stroke-[2.5]" />
+                          <span>Undo last toggle</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Daily Aggregates Bento Grid */}
