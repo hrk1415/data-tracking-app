@@ -17,7 +17,8 @@ import {
   Sparkles,
   Loader2,
   RefreshCw,
-  Lightbulb
+  Lightbulb,
+  Activity
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -25,12 +26,25 @@ import {
   Area,
   BarChart,
   Bar,
+  LineChart,
+  Line,
+  Legend,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ReferenceLine
 } from 'recharts';
+
+const colorHexes: Record<string, string> = {
+  emerald: '#8fa89b', // Desaturated green
+  blue: '#8da4c4',    // Desaturated blue
+  indigo: '#9899c4',  // Desaturated indigo
+  violet: '#a398c2',  // Desaturated violet
+  amber: '#c7b38f',   // Desaturated gold/bronze
+  rose: '#c9929d',    // Desaturated rose
+  orange: '#cca08a',  // Desaturated orange
+};
 
 interface TrackerAnalyticsProps {
   trackers: Tracker[];
@@ -47,6 +61,7 @@ interface Insight {
 type TimeMode = '7' | '30' | '90' | 'custom';
 
 export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
+  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly'>('individual');
   const [selectedTrackerId, setSelectedTrackerId] = useState<string>(
     trackers.length > 0 ? trackers[0].id : ''
   );
@@ -59,6 +74,11 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   const [customEndDate, setCustomEndDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+
+  const counterTrackers = useMemo(() => trackers.filter(t => t.type === 'counter'), [trackers]);
+  const numericTrackers = useMemo(() => trackers.filter(t => t.type === 'numeric'), [trackers]);
+  const booleanTrackers = useMemo(() => trackers.filter(t => t.type === 'boolean'), [trackers]);
+  const ratingTrackers = useMemo(() => trackers.filter(t => t.type === 'rating'), [trackers]);
 
   const [insights, setInsights] = useState<Insight[]>(() => {
     try {
@@ -266,6 +286,42 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   const activeColor = selectedTracker ? selectedTracker.color : 'emerald';
   const colorStyles = COLOR_MAP[activeColor] || COLOR_MAP.emerald;
 
+  // Calculate 7-day data for all trackers to use in "Weekly Trends" view
+  const last7DaysData = useMemo(() => {
+    const list: string[] = [];
+    const today = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+      list.push(d.toISOString().split('T')[0]);
+    }
+
+    return list.map(dateStr => {
+      const parts = dateStr.split('-');
+      const mIndex = parseInt(parts[1]) - 1;
+      const displayDate = `${monthNames[mIndex]} ${parts[2]}`;
+
+      const dataPoint: any = {
+        date: dateStr,
+        displayDate,
+      };
+
+      trackers.forEach(tracker => {
+        const dayLogs = logs.filter(l => l.trackerId === tracker.id && l.date === dateStr);
+        let val = 0;
+        if (tracker.type === 'counter') {
+          val = dayLogs.reduce((sum, log) => sum + log.value, 0);
+        } else if (dayLogs.length > 0) {
+          val = dayLogs[dayLogs.length - 1].value;
+        }
+        dataPoint[tracker.id] = val;
+      });
+
+      return dataPoint;
+    });
+  }, [trackers, logs]);
+
   // Render notes stream
   const notesStream = useMemo(() => {
     if (!selectedTracker) return [];
@@ -287,21 +343,155 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     );
   }
 
-  // Define hex color codes for Area Chart based on Tailwind name
-  const colorHexes: Record<string, string> = {
-    emerald: '#8fa89b', // Desaturated green
-    blue: '#8da4c4',    // Desaturated blue
-    indigo: '#9899c4',  // Desaturated indigo
-    violet: '#a398c2',  // Desaturated violet
-    amber: '#c7b38f',   // Desaturated gold/bronze
-    rose: '#c9929d',    // Desaturated rose
-    orange: '#cca08a',  // Desaturated orange
+  const renderTypeTrendChart = (
+    title: string,
+    description: string,
+    typeTrackers: Tracker[],
+    yDomain?: any,
+    yTicks?: number[],
+    isBoolean?: boolean
+  ) => {
+    if (typeTrackers.length === 0) {
+      return (
+        <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col h-[380px]">
+          <div className="mb-4">
+            <h4 className="font-serif font-medium text-base text-editorial-dark">{title}</h4>
+            <p className="text-[11px] font-sans italic text-editorial-dark/50 mt-0.5">{description}</p>
+          </div>
+          <div className="flex-1 border border-dashed border-editorial-dark/20 flex flex-col items-center justify-center text-center p-6 bg-editorial-bg/30">
+            <Info size={20} className="text-editorial-accent/50 stroke-[1.5px] mb-2" />
+            <p className="text-xs font-serif font-medium text-editorial-dark/80">No Trackers Available</p>
+            <p className="text-[10px] text-editorial-dark/55 max-w-[200px] leading-relaxed mt-1">
+              Add a metric with this tracker type to visualize its 7-day progress!
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col h-[380px]">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="min-w-0 flex-1 pr-2">
+            <h4 className="font-serif font-medium text-base text-editorial-dark truncate">{title}</h4>
+            <p className="text-[11px] font-sans italic text-editorial-dark/50 mt-0.5 truncate">{description}</p>
+          </div>
+          <span className="text-[9px] font-mono font-medium text-editorial-accent bg-editorial-accent-light border border-editorial-accent/20 px-2 py-0.5 shrink-0">
+            {typeTrackers.length} active
+          </span>
+        </div>
+
+        <div className="flex-1 min-h-0 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={last7DaysData} margin={{ top: 10, right: 15, left: -25, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="var(--color-editorial-dark)" strokeOpacity={0.1} />
+              <XAxis
+                dataKey="displayDate"
+                tick={{ fontSize: 9, fill: 'var(--color-editorial-dark)', opacity: 0.6, fontFamily: 'monospace' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                domain={yDomain || ['auto', 'auto']}
+                ticks={yTicks}
+                tick={{ fontSize: 9, fill: 'var(--color-editorial-dark)', opacity: 0.6, fontFamily: 'monospace' }}
+                tickFormatter={isBoolean ? (v) => (v === 1 ? 'Yes' : v === 0 ? 'No' : '') : undefined}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (active && payload && payload.length) {
+                    return (
+                      <div className="bg-editorial-dark text-editorial-bg rounded-none p-4 shadow-md text-xs space-y-2 font-sans border border-editorial-accent/30 min-w-[180px]">
+                        <p className="font-mono text-[10px] text-editorial-bg/60 border-b border-editorial-bg/15 pb-1 mb-1">{label}</p>
+                        <div className="space-y-1.5">
+                          {payload.map((p: any) => {
+                            const tracker = typeTrackers.find(t => t.id === p.dataKey);
+                            if (!tracker) return null;
+                            const valText = isBoolean 
+                              ? (p.value === 1 ? 'Yes' : 'No') 
+                              : `${p.value} ${tracker.unit || ''}`;
+                            return (
+                              <div key={p.dataKey} className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <span className="w-2 h-2 shrink-0 animate-pulse" style={{ backgroundColor: p.stroke }} />
+                                  <span className="truncate text-editorial-bg/90">{p.name}</span>
+                                </div>
+                                <span className="font-mono font-semibold text-editorial-accent">
+                                  {valText}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Legend
+                verticalAlign="bottom"
+                height={36}
+                iconSize={8}
+                iconType="circle"
+                wrapperStyle={{ fontSize: 10, fontFamily: 'monospace', opacity: 0.75, paddingTop: 10 }}
+              />
+              {typeTrackers.map(tracker => (
+                <Line
+                  key={tracker.id}
+                  type="monotone"
+                  dataKey={tracker.id}
+                  name={tracker.name}
+                  stroke={colorHexes[tracker.color] || '#8fa89b'}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    );
   };
+
   const hexColor = colorHexes[activeColor] || '#c7b38f';
 
   return (
     <div className="space-y-6">
-      {/* AI Insights Section */}
+      {/* Analytics View Selector Tabs */}
+      <div className="flex border-b border-editorial-dark/15 pb-px">
+        <button
+          type="button"
+          id="tab-individual-view"
+          onClick={() => setAnalyticsView('individual')}
+          className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
+            analyticsView === 'individual'
+              ? 'border-editorial-accent text-editorial-accent'
+              : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
+          }`}
+        >
+          Individual Metrics
+        </button>
+        <button
+          type="button"
+          id="tab-weekly-view"
+          onClick={() => setAnalyticsView('weekly')}
+          className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
+            analyticsView === 'weekly'
+              ? 'border-editorial-accent text-editorial-accent'
+              : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
+          }`}
+        >
+          Weekly Trends (7D)
+        </button>
+      </div>
+
+      {analyticsView === 'individual' ? (
+        <>
+          {/* AI Insights Section */}
       <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-editorial-dark/10 pb-4">
           <div className="flex items-center gap-2.5">
@@ -766,6 +956,55 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           </div>
         </div>
       </div>
+        </>
+      ) : (
+        /* Weekly Trends Grid View */
+        <div className="space-y-6">
+          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-editorial-accent-light border border-editorial-accent/20 text-editorial-accent">
+                <Activity size={20} className="stroke-[1.5px]" />
+              </div>
+              <div>
+                <h3 className="font-serif font-medium text-lg text-editorial-dark">
+                  Weekly Trends (7-Day Progress)
+                </h3>
+                <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
+                  Compare multi-tracker progress side-by-side grouped by metric type
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {renderTypeTrendChart(
+              'Counters & Tallies',
+              'Sum of daily logged entries (e.g. water, reps)',
+              counterTrackers
+            )}
+            {renderTypeTrendChart(
+              'Numeric Metrics',
+              'Last logged daily numerical value (e.g. weight, sleep hours)',
+              numericTrackers
+            )}
+            {renderTypeTrendChart(
+              'Habits & Booleans',
+              'Daily completion status (Yes/No status)',
+              booleanTrackers,
+              [0, 1],
+              [0, 1],
+              true
+            )}
+            {renderTypeTrendChart(
+              'Ratings & Quality',
+              'Subjective daily rating scale (1-5 quality metric)',
+              ratingTrackers,
+              [1, 5],
+              [1, 2, 3, 4, 5]
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
