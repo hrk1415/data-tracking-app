@@ -38,7 +38,9 @@ import {
   BookOpen,
   Edit2,
   Trash2,
-  Save
+  Save,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -95,6 +97,29 @@ export default function App() {
     return localStorage.getItem('daily_reminder_time') || '20:00';
   });
   const [reminderDismissedDate, setReminderDismissedDate] = useState<string | null>(null);
+
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+      return 'light';
+    } catch {
+      return 'light';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('theme', theme);
+    } catch (e) {
+      console.error(e);
+    }
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
 
   // Initialize state on client mount
   useEffect(() => {
@@ -564,6 +589,20 @@ export default function App() {
 
         {/* Global Action Header Items */}
         <div className="flex items-center gap-3">
+          {/* Theme Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            className="flex items-center justify-center h-9 w-9 rounded-none border border-editorial-dark/20 hover:border-editorial-accent hover:bg-editorial-accent-light text-editorial-dark transition-all cursor-pointer"
+            title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+          >
+            {theme === 'light' ? (
+              <Moon size={14} className="text-editorial-accent" />
+            ) : (
+              <Sun size={14} className="text-editorial-accent" />
+            )}
+          </button>
+
           {/* Backup Action Trigger */}
           <button
             type="button"
