@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Tracker, LogEntry, CATEGORIES, COLOR_MAP, DailyReflection } from './types';
 import { loadData, saveTrackers, saveLogs, saveReflections, exportDataAsJson, importDataFromJson } from './utils/storage';
+import { importLogsFromCSV } from './utils/csvParser';
 import { AddTrackerModal } from './components/AddTrackerModal';
 import { TrackerCard } from './components/TrackerCard';
 import { TrackerAnalytics } from './components/TrackerAnalytics';
@@ -604,6 +605,33 @@ export default function App() {
       }
     };
     reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // CSV Import backing trigger
+  const handleImportCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result;
+      if (typeof text === 'string') {
+        const result = importLogsFromCSV(text, trackers);
+        if (result && result.importedCount > 0) {
+          setTrackers(result.trackers);
+          setLogs(result.logs);
+          saveTrackers(result.trackers);
+          saveLogs(result.logs);
+          alert(`CSV imported successfully! Parsed and loaded ${result.importedCount} logs, dynamically setting up trackers.`);
+          setIsBackupSectionOpen(false);
+        } else {
+          alert('Failed to import CSV. Please make sure the file contains at least headers and some valid data rows with Date, Tracker Name, and Value columns.');
+        }
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const handleExportData = () => {
@@ -788,6 +816,18 @@ export default function App() {
                     type="file"
                     accept=".json"
                     onChange={handleImportFile}
+                    className="hidden"
+                  />
+                </label>
+
+                {/* Import CSV Button */}
+                <label className="flex items-center gap-1.5 bg-editorial-bg hover:bg-editorial-orange-light/20 border border-editorial-dark/20 text-editorial-dark font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer" title="Import data from a CSV spreadsheet">
+                  <Upload size={14} className="text-editorial-orange" />
+                  Import CSV
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleImportCSVFile}
                     className="hidden"
                   />
                 </label>
