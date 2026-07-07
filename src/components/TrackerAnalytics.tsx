@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Tracker, LogEntry, COLOR_MAP } from '../types';
+import { Tracker, LogEntry, COLOR_MAP, CATEGORIES } from '../types';
 import { LucideIcon } from './LucideIcon';
 import {
   TrendingUp,
@@ -76,6 +76,18 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   const [customEndDate, setCustomEndDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  const weeklyTrackers = useMemo(() => {
+    if (selectedCategory === 'all') return trackers;
+    return trackers.filter(t => t.category === selectedCategory);
+  }, [trackers, selectedCategory]);
+
+  const filteredCounterTrackers = useMemo(() => weeklyTrackers.filter(t => t.type === 'counter'), [weeklyTrackers]);
+  const filteredNumericTrackers = useMemo(() => weeklyTrackers.filter(t => t.type === 'numeric'), [weeklyTrackers]);
+  const filteredBooleanTrackers = useMemo(() => weeklyTrackers.filter(t => t.type === 'boolean'), [weeklyTrackers]);
+  const filteredRatingTrackers = useMemo(() => weeklyTrackers.filter(t => t.type === 'rating'), [weeklyTrackers]);
 
   const counterTrackers = useMemo(() => trackers.filter(t => t.type === 'counter'), [trackers]);
   const numericTrackers = useMemo(() => trackers.filter(t => t.type === 'numeric'), [trackers]);
@@ -267,9 +279,9 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       prev7Days.push(d.toISOString().split('T')[0]);
     }
 
-    // Filter logs in last 7 days and prev 7 days
-    const last7Logs = logs.filter(l => last7Days.includes(l.date));
-    const prev7Logs = logs.filter(l => prev7Days.includes(l.date));
+    // Filter logs in last 7 days and prev 7 days for the weeklyTrackers
+    const last7Logs = logs.filter(l => last7Days.includes(l.date) && weeklyTrackers.some(wt => wt.id === l.trackerId));
+    const prev7Logs = logs.filter(l => prev7Days.includes(l.date) && weeklyTrackers.some(wt => wt.id === l.trackerId));
 
     const last7Count = last7Logs.length;
     const prev7Count = prev7Logs.length;
@@ -283,7 +295,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     }
 
     // Group tracker breakdowns for last 7 vs prev 7 days
-    const trackerBreakdown = trackers.map(tracker => {
+    const trackerBreakdown = weeklyTrackers.map(tracker => {
       const tLast7 = last7Logs.filter(l => l.trackerId === tracker.id).length;
       const tPrev7 = prev7Logs.filter(l => l.trackerId === tracker.id).length;
       const tDiff = tLast7 - tPrev7;
@@ -302,7 +314,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       percentChange,
       trackerBreakdown
     };
-  }, [trackers, logs]);
+  }, [weeklyTrackers, logs]);
 
   // Calculations for KPI Cards
   const stats = useMemo(() => {
@@ -412,7 +424,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
         displayDate,
       };
 
-      trackers.forEach(tracker => {
+      weeklyTrackers.forEach(tracker => {
         const dayLogs = logs.filter(l => l.trackerId === tracker.id && l.date === dateStr);
         let val = 0;
         if (tracker.type === 'counter') {
@@ -425,7 +437,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
 
       return dataPoint;
     });
-  }, [trackers, logs]);
+  }, [weeklyTrackers, logs]);
 
   // Render notes stream
   const notesStream = useMemo(() => {
@@ -1065,7 +1077,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       ) : (
         /* Weekly Trends Grid View */
         <div className="space-y-6">
-          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15">
+          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-2.5">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-editorial-accent-light border border-editorial-accent/20 text-editorial-accent">
                 <Activity size={20} className="stroke-[1.5px]" />
@@ -1077,6 +1089,26 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                 <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
                   Compare multi-tracker progress side-by-side grouped by metric type
                 </p>
+              </div>
+            </div>
+
+            {/* Category Filter Dropdown */}
+            <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
+              <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider shrink-0">Filter Category:</span>
+              <div className="relative">
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-2 text-xs font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
+                >
+                  <option value="all">All Categories</option>
+                  {CATEGORIES.map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={13} />
               </div>
             </div>
           </div>
@@ -1199,17 +1231,17 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
             {renderTypeTrendChart(
               'Counters & Tallies',
               'Sum of daily logged entries (e.g. water, reps)',
-              counterTrackers
+              filteredCounterTrackers
             )}
             {renderTypeTrendChart(
               'Numeric Metrics',
               'Last logged daily numerical value (e.g. weight, sleep hours)',
-              numericTrackers
+              filteredNumericTrackers
             )}
             {renderTypeTrendChart(
               'Habits & Booleans',
               'Daily completion status (Yes/No status)',
-              booleanTrackers,
+              filteredBooleanTrackers,
               [0, 1],
               [0, 1],
               true
@@ -1217,7 +1249,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
             {renderTypeTrendChart(
               'Ratings & Quality',
               'Subjective daily rating scale (1-5 quality metric)',
-              ratingTrackers,
+              filteredRatingTrackers,
               [1, 5],
               [1, 2, 3, 4, 5]
             )}
