@@ -13,7 +13,11 @@ import {
   Award,
   CheckCircle2,
   ChevronDown,
-  Info
+  Info,
+  Sparkles,
+  Loader2,
+  RefreshCw,
+  Lightbulb
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,6 +37,13 @@ interface TrackerAnalyticsProps {
   logs: LogEntry[];
 }
 
+interface Insight {
+  title: string;
+  description: string;
+  type: 'success' | 'warning' | 'info';
+  trackerName: string;
+}
+
 type TimeMode = '7' | '30' | '90' | 'custom';
 
 export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
@@ -48,6 +59,47 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   const [customEndDate, setCustomEndDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+
+  const [insights, setInsights] = useState<Insight[]>(() => {
+    try {
+      const cached = localStorage.getItem('tracker_ai_insights');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const generateInsights = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/insights', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ trackers, logs }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP error ${res.status}`);
+      }
+      const data = await res.json();
+      if (data && Array.isArray(data.insights)) {
+        setInsights(data.insights);
+        localStorage.setItem('tracker_ai_insights', JSON.stringify(data.insights));
+      } else {
+        throw new Error('Invalid response format');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Failed to generate insights');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Ensure selected tracker is still valid
   const selectedTracker = useMemo(() => {
@@ -249,6 +301,147 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
 
   return (
     <div className="space-y-6">
+      {/* AI Insights Section */}
+      <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-editorial-dark/10 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-editorial-accent-light border border-editorial-accent/20 text-editorial-accent">
+              <Sparkles size={20} className="stroke-[1.5px]" />
+            </div>
+            <div>
+              <h3 className="font-serif font-medium text-lg text-editorial-dark">
+                Gemini Performance Insights
+              </h3>
+              <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
+                AI-powered analysis of your historical log patterns and progress
+              </p>
+            </div>
+          </div>
+          <div>
+            <button
+              onClick={generateInsights}
+              disabled={loading}
+              className="inline-flex items-center gap-2 bg-editorial-accent hover:bg-editorial-accent/90 disabled:bg-editorial-dark/10 disabled:text-editorial-dark/40 border border-editorial-accent/20 text-editorial-bg px-4 py-2 text-xs font-mono font-medium transition-all cursor-pointer"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Analyzing Logs...</span>
+                </>
+              ) : insights.length > 0 ? (
+                <>
+                  <RefreshCw size={14} />
+                  <span>Refresh Analysis</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={14} />
+                  <span>Generate AI Insights</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+            <Loader2 size={36} className="text-editorial-accent animate-spin stroke-[1.5px]" />
+            <div className="space-y-1.5 max-w-md">
+              <p className="text-sm font-serif font-medium text-editorial-dark">Analyzing historical metrics...</p>
+              <p className="text-xs font-sans italic text-editorial-dark/50 animate-pulse">
+                Gemini is examining weekday-weekend shifts and correlating your logs to uncover hidden trends
+              </p>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="p-4 bg-red-50 border border-red-200/50 text-red-700 text-xs font-mono flex items-center gap-3">
+            <Info size={16} className="text-red-600 animate-pulse" />
+            <div className="flex-1">
+              <p className="font-bold">Failed to analyze data</p>
+              <p className="text-red-600/80 mt-0.5">{error}</p>
+            </div>
+            <button
+              onClick={generateInsights}
+              className="underline hover:text-red-900 cursor-pointer text-xs font-mono"
+            >
+              Retry
+            </button>
+          </div>
+        ) : insights.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {insights.map((insight, idx) => {
+              const borderColors = {
+                success: 'border-l-4 border-l-emerald-600 bg-emerald-500/5 border-editorial-dark/15',
+                warning: 'border-l-4 border-l-amber-600 bg-amber-500/5 border-editorial-dark/15',
+                info: 'border-l-4 border-l-indigo-600 bg-indigo-500/5 border-editorial-dark/15',
+              };
+
+              const iconTags = {
+                success: <CheckCircle2 size={14} className="text-emerald-700 shrink-0" />,
+                warning: <Info size={14} className="text-amber-700 shrink-0" />,
+                info: <Info size={14} className="text-indigo-700 shrink-0" />,
+              };
+
+              const badgeColors = {
+                success: 'bg-emerald-500/10 text-emerald-800 border-emerald-500/20',
+                warning: 'bg-amber-500/10 text-amber-800 border-amber-500/20',
+                info: 'bg-indigo-500/10 text-indigo-800 border-indigo-500/20',
+              };
+
+              return (
+                <div
+                  key={idx}
+                  className={`p-5 flex flex-col justify-between border rounded-none transition-all hover:border-editorial-dark/30 ${
+                    borderColors[insight.type] || borderColors.info
+                  }`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[9px] font-mono font-medium text-editorial-dark/45 uppercase tracking-widest truncate">
+                        {insight.trackerName}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1 text-[9px] font-mono font-medium px-2 py-0.5 border ${
+                          badgeColors[insight.type] || badgeColors.info
+                        }`}
+                      >
+                        {iconTags[insight.type]}
+                        <span className="capitalize">{insight.type}</span>
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <h4 className="font-serif font-medium text-[15px] text-editorial-dark leading-snug">
+                        {insight.title}
+                      </h4>
+                      <p className="text-xs text-editorial-dark/75 leading-relaxed font-sans">
+                        {insight.description}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-8 border border-dashed border-editorial-dark/20 text-center flex flex-col items-center justify-center space-y-3 bg-editorial-bg/30">
+            <Lightbulb size={24} className="text-editorial-accent/60 stroke-[1.5px]" />
+            <div className="max-w-md">
+              <p className="text-sm font-serif font-medium text-editorial-dark">Ready for Deep AI Analysis</p>
+              <p className="text-xs text-editorial-dark/55 mt-1 leading-relaxed">
+                Click the button above to let Gemini analyze your tracker settings and historical entries. We will search for correlations, streaks, and identify actionable improvements.
+              </p>
+            </div>
+            <button
+              onClick={generateInsights}
+              className="mt-2 border border-editorial-dark/25 hover:border-editorial-accent text-editorial-dark hover:text-editorial-accent px-4 py-1.5 text-xs font-mono font-medium transition-all cursor-pointer bg-editorial-bg"
+            >
+              Analyze with Gemini
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Selector and Filter Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-editorial-bg p-5 rounded-none border border-editorial-dark/15">
         {/* Tracker Selection Dropdown */}
