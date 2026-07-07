@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Tracker, LogEntry, COLOR_MAP } from '../types';
 import { LucideIcon } from './LucideIcon';
-import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame } from 'lucide-react';
+import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface TrackerCardProps {
@@ -32,6 +32,42 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
     // Show latest log value
     currentValue = trackerLogs.length > 0 ? trackerLogs[trackerLogs.length - 1].value : 0;
   }
+
+  // Calculate daily trend data (comparing today's value with yesterday's value)
+  const trendData = React.useMemo(() => {
+    const prevDateObj = new Date(selectedDate + 'T12:00:00');
+    prevDateObj.setDate(prevDateObj.getDate() - 1);
+    const prevDateStr = prevDateObj.toISOString().split('T')[0];
+
+    const prevDayLogs = logs.filter(l => l.trackerId === tracker.id && l.date === prevDateStr);
+    
+    let prevValue = 0;
+    if (tracker.type === 'counter') {
+      prevValue = prevDayLogs.reduce((sum, log) => sum + log.value, 0);
+    } else {
+      prevValue = prevDayLogs.length > 0 ? prevDayLogs[prevDayLogs.length - 1].value : 0;
+    }
+
+    const hasTodayLogs = trackerLogs.length > 0;
+    const hasYesterdayLogs = prevDayLogs.length > 0;
+
+    // We only show comparison if at least one of the days has logs.
+    if (!hasTodayLogs && !hasYesterdayLogs) {
+      return null;
+    }
+
+    const diff = currentValue - prevValue;
+    let trend: 'up' | 'down' | 'equal' = 'equal';
+    if (diff > 0.0001) trend = 'up';
+    else if (diff < -0.0001) trend = 'down';
+
+    return {
+      prevValue,
+      currentValue,
+      diff,
+      trend,
+    };
+  }, [tracker, logs, selectedDate, currentValue, trackerLogs.length]);
 
   const latestLogNote = trackerLogs.length > 0 ? trackerLogs[trackerLogs.length - 1].note : '';
 
@@ -187,6 +223,39 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
             >
               <Flame size={11} className="fill-current animate-pulse text-editorial-orange" />
               <span>{streak}d Streak</span>
+            </span>
+          )}
+          {trendData && (
+            <span 
+              className={`inline-flex items-center gap-1 text-[10px] font-mono font-medium border rounded-none px-2 py-0.5 select-none cursor-help ${
+                trendData.trend === 'up'
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-800'
+                  : trendData.trend === 'down'
+                  ? 'bg-rose-500/10 border-rose-500/20 text-rose-800'
+                  : 'bg-editorial-dark/5 border-editorial-dark/10 text-editorial-dark/60'
+              }`}
+              title={`Yesterday: ${trendData.prevValue}${tracker.unit ? ` ${tracker.unit}` : ''} | Today: ${trendData.currentValue}${tracker.unit ? ` ${tracker.unit}` : ''}`}
+            >
+              {trendData.trend === 'up' ? (
+                <>
+                  <ArrowUp size={11} className="stroke-[2.5px] text-emerald-600" />
+                  <span>
+                    {tracker.type === 'boolean' ? 'Active' : `+${Math.round(trendData.diff * 100) / 100}`}
+                  </span>
+                </>
+              ) : trendData.trend === 'down' ? (
+                <>
+                  <ArrowDown size={11} className="stroke-[2.5px] text-rose-600" />
+                  <span>
+                    {tracker.type === 'boolean' ? 'Inactive' : `${Math.round(trendData.diff * 100) / 100}`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Minus size={11} className="stroke-[2.5px] text-editorial-dark/40" />
+                  <span>Stable</span>
+                </>
+              )}
             </span>
           )}
         </div>
