@@ -33,7 +33,8 @@ import {
   ArrowUp,
   ArrowDown,
   Minus,
-  RotateCcw
+  RotateCcw,
+  Bell
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -72,6 +73,19 @@ export default function App() {
   const [isBackupSectionOpen, setIsBackupSectionOpen] = useState(false);
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
   const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
+
+  const [reminderEnabled, setReminderEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('daily_reminder_enabled');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
+  const [reminderTime, setReminderTime] = useState<string>(() => {
+    return localStorage.getItem('daily_reminder_time') || '20:00';
+  });
+  const [reminderDismissedDate, setReminderDismissedDate] = useState<string | null>(null);
 
   // Initialize state on client mount
   useEffect(() => {
@@ -224,6 +238,21 @@ export default function App() {
       completionRate: trackersWithGoals > 0 ? Math.round((completedGoalsOnDate / trackersWithGoals) * 100) : 0,
     };
   }, [trackers, logs, selectedDate]);
+
+  // Check if daily reminder should be displayed based on goals and set time
+  const showReminderBanner = useMemo(() => {
+    if (!reminderEnabled) return false;
+    if (dailyStats.withGoals === 0 || dailyStats.completionRate === 100) return false;
+    if (reminderDismissedDate === selectedDate) return false;
+
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    const [h, m] = reminderTime.split(':').map(Number);
+    const targetMinutes = (h || 0) * 60 + (m || 0);
+
+    return currentMinutes >= targetMinutes;
+  }, [reminderEnabled, reminderTime, dailyStats, reminderDismissedDate, selectedDate]);
 
   // Previous day date string
   const prevDateStr = useMemo(() => {
@@ -630,6 +659,68 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Daily Reminder Push-Notification-Style Banner */}
+                <AnimatePresence>
+                  {showReminderBanner && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                      className="bg-editorial-dark text-editorial-bg p-5 rounded-none border border-editorial-dark/15 shadow-xl flex items-start justify-between gap-4 relative overflow-hidden"
+                    >
+                      {/* Left accent accentuation strip */}
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-editorial-accent" />
+                      
+                      <div className="flex items-start gap-4.5 pl-1.5">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-editorial-accent text-editorial-bg animate-pulse mt-0.5">
+                          <Bell size={18} className="stroke-[1.5]" />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="block text-[9px] font-mono font-bold text-editorial-accent uppercase tracking-widest">
+                            Daily Reminder • Pending Goals
+                          </span>
+                          <h4 className="font-serif font-medium text-base text-editorial-bg leading-tight">
+                            Complete Your Habits!
+                          </h4>
+                          <p className="text-xs text-editorial-bg/85 max-w-2xl leading-relaxed">
+                            It is past your set reminder time of <strong className="font-mono text-editorial-accent">{reminderTime}</strong>. You have completed <strong className="font-mono text-editorial-accent">{dailyStats.completedGoals} of {dailyStats.withGoals}</strong> daily goals ({dailyStats.completionRate}%) for {formattedSelectedDate}. Keep up the momentum!
+                          </p>
+                          <div className="pt-2 flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={handleQuickGoalToggle}
+                              className="bg-editorial-accent hover:bg-editorial-accent/90 text-editorial-bg border border-editorial-accent/20 px-3 py-1 text-[10px] font-mono font-medium transition-colors cursor-pointer"
+                            >
+                              Mark All as Complete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const el = document.getElementById('tracked-metrics-heading');
+                                if (el) {
+                                  el.scrollIntoView({ behavior: 'smooth' });
+                                }
+                              }}
+                              className="border border-editorial-bg/35 hover:border-editorial-bg hover:bg-editorial-bg/10 text-editorial-bg px-3 py-1 text-[10px] font-mono font-medium transition-colors cursor-pointer"
+                            >
+                              Log Manually
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setReminderDismissedDate(selectedDate)}
+                        className="p-1.5 text-editorial-bg/60 hover:text-editorial-bg hover:bg-editorial-bg/10 rounded-none transition-colors self-start cursor-pointer"
+                        title="Dismiss Reminder"
+                      >
+                        <X size={15} />
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Daily Goal Achievement Summary Bar */}
                 <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -677,30 +768,78 @@ export default function App() {
 
                   {dailyStats.withGoals > 0 && (
                     <div className="pt-3.5 border-t border-editorial-dark/10 flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          id="quick-goal-toggle"
-                          onClick={handleQuickGoalToggle}
-                          className="flex items-center gap-2 group cursor-pointer select-none"
-                        >
-                          <div
-                            className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out border ${
-                              dailyStats.completionRate === 100
-                                ? 'bg-editorial-accent border-editorial-accent'
-                                : 'bg-editorial-dark/10 border-editorial-dark/15'
-                            }`}
+                      <div className="flex flex-wrap items-center gap-6">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            id="quick-goal-toggle"
+                            onClick={handleQuickGoalToggle}
+                            className="flex items-center gap-2 group cursor-pointer select-none"
                           >
                             <div
-                              className={`w-3.5 h-3.5 rounded-full bg-editorial-bg shadow-sm transform transition-transform duration-200 ease-in-out ${
-                                dailyStats.completionRate === 100 ? 'translate-x-3.5' : 'translate-x-0'
+                              className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out border ${
+                                dailyStats.completionRate === 100
+                                  ? 'bg-editorial-accent border-editorial-accent'
+                                  : 'bg-editorial-dark/10 border-editorial-dark/15'
                               }`}
-                            />
-                          </div>
-                          <span className="text-[10px] font-mono font-medium text-editorial-dark/60 group-hover:text-editorial-dark transition-colors uppercase tracking-wider">
-                            Quick Goal 100% Complete
-                          </span>
-                        </button>
+                            >
+                              <div
+                                className={`w-3.5 h-3.5 rounded-full bg-editorial-bg shadow-sm transform transition-transform duration-200 ease-in-out ${
+                                  dailyStats.completionRate === 100 ? 'translate-x-3.5' : 'translate-x-0'
+                                }`}
+                              />
+                            </div>
+                            <span className="text-[10px] font-mono font-medium text-editorial-dark/60 group-hover:text-editorial-dark transition-colors uppercase tracking-wider">
+                              Quick Goal 100% Complete
+                            </span>
+                          </button>
+                        </div>
+
+                        {/* Daily Reminder Control */}
+                        <div className="flex items-center gap-3 sm:border-l sm:border-editorial-dark/10 sm:pl-6">
+                          <button
+                            type="button"
+                            id="daily-reminder-toggle"
+                            onClick={() => {
+                              const newValue = !reminderEnabled;
+                              setReminderEnabled(newValue);
+                              localStorage.setItem('daily_reminder_enabled', JSON.stringify(newValue));
+                            }}
+                            className="flex items-center gap-2 group cursor-pointer select-none"
+                          >
+                            <div
+                              className={`w-8 h-4.5 rounded-full p-0.5 transition-colors duration-200 ease-in-out border ${
+                                reminderEnabled
+                                  ? 'bg-editorial-accent border-editorial-accent'
+                                  : 'bg-editorial-dark/10 border-editorial-dark/15'
+                              }`}
+                            >
+                              <div
+                                className={`w-3.5 h-3.5 rounded-full bg-editorial-bg shadow-sm transform transition-transform duration-200 ease-in-out ${
+                                  reminderEnabled ? 'translate-x-3.5' : 'translate-x-0'
+                                }`}
+                              />
+                            </div>
+                            <span className="text-[10px] font-mono font-medium text-editorial-dark/60 group-hover:text-editorial-dark transition-colors uppercase tracking-wider">
+                              Daily Reminder
+                            </span>
+                          </button>
+
+                          {reminderEnabled && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[9px] font-mono text-editorial-dark/40 uppercase">at</span>
+                              <input
+                                type="time"
+                                value={reminderTime}
+                                onChange={(e) => {
+                                  setReminderTime(e.target.value);
+                                  localStorage.setItem('daily_reminder_time', e.target.value);
+                                }}
+                                className="rounded-none border border-editorial-dark/25 bg-editorial-bg px-1.5 py-0.5 text-[10px] font-mono text-editorial-dark focus:border-editorial-accent focus:outline-hidden"
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {lastToggleBackup && lastToggleDate === selectedDate && (
@@ -789,7 +928,7 @@ export default function App() {
                 {/* Tracker Cards Grid Display */}
                 <div>
                   <div className="flex items-center justify-between mb-4 border-b border-editorial-dark/10 pb-2">
-                    <h3 className="text-xs font-mono text-editorial-accent tracking-widest uppercase">Tracked Metrics</h3>
+                    <h3 id="tracked-metrics-heading" className="text-xs font-mono text-editorial-accent tracking-widest uppercase">Tracked Metrics</h3>
                     {trackers.length > 0 && (
                       <span className="text-xs font-serif italic text-editorial-dark/65">
                         {trackers.length} active monitors
