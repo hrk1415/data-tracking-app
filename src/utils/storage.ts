@@ -3,24 +3,28 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Tracker, LogEntry } from '../types';
+import { Tracker, LogEntry, DailyReflection } from '../types';
 import { getInitialTrackers, getInitialLogs } from './initialData';
 
 const TRACKERS_KEY = 'data_tracker_trackers';
 const LOGS_KEY = 'data_tracker_logs';
+const REFLECTIONS_KEY = 'data_tracker_reflections';
 
 export interface StorageData {
   trackers: Tracker[];
   logs: LogEntry[];
+  reflections: DailyReflection[];
 }
 
 export function loadData(): StorageData {
   try {
     const trackersJson = localStorage.getItem(TRACKERS_KEY);
     const logsJson = localStorage.getItem(LOGS_KEY);
+    const reflectionsJson = localStorage.getItem(REFLECTIONS_KEY);
 
     let trackers: Tracker[] = [];
     let logs: LogEntry[] = [];
+    let reflections: DailyReflection[] = [];
 
     if (trackersJson) {
       trackers = JSON.parse(trackersJson);
@@ -36,15 +40,24 @@ export function loadData(): StorageData {
       localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
     }
 
-    return { trackers, logs };
+    if (reflectionsJson) {
+      reflections = JSON.parse(reflectionsJson);
+    } else {
+      reflections = [];
+      localStorage.setItem(REFLECTIONS_KEY, JSON.stringify(reflections));
+    }
+
+    return { trackers, logs, reflections };
   } catch (error) {
     console.error('Failed to load data from localStorage', error);
     return {
       trackers: getInitialTrackers(),
       logs: getInitialLogs(),
+      reflections: [],
     };
   }
 }
+
 
 export function saveTrackers(trackers: Tracker[]): void {
   try {
@@ -62,17 +75,26 @@ export function saveLogs(logs: LogEntry[]): void {
   }
 }
 
-export function exportDataAsJson(trackers: Tracker[], logs: LogEntry[]): string {
+export function saveReflections(reflections: DailyReflection[]): void {
+  try {
+    localStorage.setItem(REFLECTIONS_KEY, JSON.stringify(reflections));
+  } catch (error) {
+    console.error('Failed to save reflections', error);
+  }
+}
+
+export function exportDataAsJson(trackers: Tracker[], logs: LogEntry[], reflections: DailyReflection[]): string {
   const data = {
-    version: '1.0',
+    version: '1.1',
     exportedAt: new Date().toISOString(),
     trackers,
     logs,
+    reflections,
   };
   return JSON.stringify(data, null, 2);
 }
 
-export function importDataFromJson(jsonString: string): { trackers: Tracker[]; logs: LogEntry[] } | null {
+export function importDataFromJson(jsonString: string): { trackers: Tracker[]; logs: LogEntry[]; reflections: DailyReflection[] } | null {
   try {
     const data = JSON.parse(jsonString);
     if (data && Array.isArray(data.trackers) && Array.isArray(data.logs)) {
@@ -83,7 +105,17 @@ export function importDataFromJson(jsonString: string): { trackers: Tracker[]; l
       if (trackersValid && logsValid) {
         localStorage.setItem(TRACKERS_KEY, JSON.stringify(data.trackers));
         localStorage.setItem(LOGS_KEY, JSON.stringify(data.logs));
-        return { trackers: data.trackers, logs: data.logs };
+
+        let reflections: DailyReflection[] = [];
+        if (Array.isArray(data.reflections)) {
+          const reflectionsValid = data.reflections.every((r: any) => r.date && r.text !== undefined);
+          if (reflectionsValid) {
+            reflections = data.reflections;
+          }
+        }
+        localStorage.setItem(REFLECTIONS_KEY, JSON.stringify(reflections));
+
+        return { trackers: data.trackers, logs: data.logs, reflections };
       }
     }
     return null;
@@ -92,3 +124,4 @@ export function importDataFromJson(jsonString: string): { trackers: Tracker[]; l
     return null;
   }
 }
+

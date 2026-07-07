@@ -94,3 +94,10 @@ export const COLOR_MAP: Record<string, { bg: string; text: string; border: strin
     lightBg: 'bg-editorial-orange-light/50',
   },
 };
+
+export interface DailyReflection {
+  date: string; // YYYY-MM-DD
+  text: string;
+  updatedAt?: string;
+}
+

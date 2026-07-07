@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Tracker, LogEntry, CATEGORIES, COLOR_MAP } from './types';
-import { loadData, saveTrackers, saveLogs, exportDataAsJson, importDataFromJson } from './utils/storage';
+import { Tracker, LogEntry, CATEGORIES, COLOR_MAP, DailyReflection } from './types';
+import { loadData, saveTrackers, saveLogs, saveReflections, exportDataAsJson, importDataFromJson } from './utils/storage';
 import { AddTrackerModal } from './components/AddTrackerModal';
 import { TrackerCard } from './components/TrackerCard';
 import { TrackerAnalytics } from './components/TrackerAnalytics';
@@ -34,7 +34,11 @@ import {
   ArrowDown,
   Minus,
   RotateCcw,
-  Bell
+  Bell,
+  BookOpen,
+  Edit2,
+  Trash2,
+  Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -67,12 +71,17 @@ export default function App() {
   // Load initial data from localStorage (or defaults)
   const [trackers, setTrackers] = useState<Tracker[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [reflections, setReflections] = useState<DailyReflection[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'analytics' | 'history' | 'manage'>('dashboard');
   const [isAddTrackerOpen, setIsAddTrackerOpen] = useState(false);
   const [isBackupSectionOpen, setIsBackupSectionOpen] = useState(false);
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
   const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
+
+  // Reflection editor state
+  const [reflectionInput, setReflectionInput] = useState<string>('');
+  const [isEditingReflection, setIsEditingReflection] = useState<boolean>(false);
 
   const [reminderEnabled, setReminderEnabled] = useState<boolean>(() => {
     try {
@@ -92,6 +101,7 @@ export default function App() {
     const data = loadData();
     setTrackers(data.trackers);
     setLogs(data.logs);
+    setReflections(data.reflections || []);
 
     // Default selected date to today (local timezone, YYYY-MM-DD)
     const today = new Date();
@@ -99,6 +109,43 @@ export default function App() {
     const localISOTime = new Date(today.getTime() - tzOffset).toISOString().split('T')[0];
     setSelectedDate(localISOTime);
   }, []);
+
+  // Keep reflection input in sync with selectedDate and reflections
+  useEffect(() => {
+    const activeRef = reflections.find(r => r.date === selectedDate);
+    setReflectionInput(activeRef ? activeRef.text : '');
+    setIsEditingReflection(false);
+  }, [selectedDate, reflections]);
+
+  // Save/Update Daily Reflection
+  const handleSaveReflection = (date: string, text: string) => {
+    let updated: DailyReflection[];
+    const existingIndex = reflections.findIndex(r => r.date === date);
+    if (existingIndex > -1) {
+      if (text.trim() === '') {
+        updated = reflections.filter(r => r.date !== date);
+      } else {
+        updated = [...reflections];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          text,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+    } else {
+      if (text.trim() === '') return;
+      updated = [
+        ...reflections,
+        {
+          date,
+          text,
+          updatedAt: new Date().toISOString(),
+        }
+      ];
+    }
+    setReflections(updated);
+    saveReflections(updated);
+  };
 
   // Save trackers when state changes
   const handleAddTracker = (newTracker: Tracker) => {
@@ -414,6 +461,7 @@ export default function App() {
         if (imported) {
           setTrackers(imported.trackers);
           setLogs(imported.logs);
+          setReflections(imported.reflections || []);
           alert('Data tracking backup imported successfully!');
           setIsBackupSectionOpen(false);
         } else {
@@ -425,7 +473,7 @@ export default function App() {
   };
 
   const handleExportData = () => {
-    const dataStr = exportDataAsJson(trackers, logs);
+    const dataStr = exportDataAsJson(trackers, logs, reflections);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -1000,6 +1048,95 @@ export default function App() {
                       <span className="text-[8px] font-mono text-editorial-dark/45 uppercase tracking-wider">vs yesterday</span>
                     </div>
                   </div>
+                </div>
+
+                {/* Daily Reflection Section */}
+                <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-4">
+                  <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-2">
+                    <div className="flex items-center gap-2">
+                      <BookOpen size={16} className="text-editorial-accent" />
+                      <h3 className="text-xs font-mono text-editorial-accent tracking-widest uppercase">Daily Reflection</h3>
+                    </div>
+                    {reflections.some(r => r.date === selectedDate) && !isEditingReflection && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ref = reflections.find(r => r.date === selectedDate);
+                            setReflectionInput(ref ? ref.text : '');
+                            setIsEditingReflection(true);
+                          }}
+                          className="text-[11px] font-mono font-semibold text-editorial-dark/50 hover:text-editorial-accent transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit2 size={12} />
+                          <span>Edit</span>
+                        </button>
+                        <span className="text-editorial-dark/20 text-xs">|</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Are you sure you want to clear your reflection for this day?')) {
+                              handleSaveReflection(selectedDate, '');
+                            }
+                          }}
+                          className="text-[11px] font-mono font-semibold text-editorial-dark/50 hover:text-rose-600 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 size={12} />
+                          <span>Clear</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {isEditingReflection || !reflections.some(r => r.date === selectedDate) ? (
+                    <div className="space-y-3">
+                      <textarea
+                        value={reflectionInput}
+                        onChange={(e) => setReflectionInput(e.target.value)}
+                        placeholder="How was your day? Write down any reflections, breakthroughs, challenges, or summary notes here..."
+                        rows={3}
+                        className="w-full rounded-none border border-editorial-dark/20 bg-editorial-bg p-3.5 text-xs font-serif font-medium text-editorial-dark outline-hidden focus:border-editorial-accent transition-all leading-relaxed"
+                      />
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleSaveReflection(selectedDate, reflectionInput);
+                            setIsEditingReflection(false);
+                          }}
+                          className="bg-editorial-accent hover:bg-editorial-dark text-editorial-bg font-mono text-xs px-4 py-2 rounded-none transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Save size={13} />
+                          <span>Save Note</span>
+                        </button>
+                        {reflections.some(r => r.date === selectedDate) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const ref = reflections.find(r => r.date === selectedDate);
+                              setReflectionInput(ref ? ref.text : '');
+                              setIsEditingReflection(false);
+                            }}
+                            className="border border-editorial-dark/20 hover:bg-editorial-dark/5 text-editorial-dark/70 font-mono text-xs px-4 py-2 rounded-none transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative pl-5 py-1">
+                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-editorial-accent" />
+                      <p className="text-sm font-serif italic text-editorial-dark/90 leading-relaxed whitespace-pre-wrap">
+                        "{reflections.find(r => r.date === selectedDate)?.text}"
+                      </p>
+                      {reflections.find(r => r.date === selectedDate)?.updatedAt && (
+                        <span className="block mt-2 text-[9px] font-mono text-editorial-dark/45 uppercase tracking-wider">
+                          Logged at {new Date(reflections.find(r => r.date === selectedDate)!.updatedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Tracker Cards Grid Display */}
