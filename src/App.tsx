@@ -40,7 +40,11 @@ import {
   Trash2,
   Save,
   Sun,
-  Moon
+  Moon,
+  Flag,
+  Clock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -84,6 +88,20 @@ export default function App() {
   // Reflection editor state
   const [reflectionInput, setReflectionInput] = useState<string>('');
   const [isEditingReflection, setIsEditingReflection] = useState<boolean>(false);
+
+  // Milestone inputs
+  const [milestoneTimeInput, setMilestoneTimeInput] = useState<string>('');
+  const [milestoneTextInput, setMilestoneTextInput] = useState<string>('');
+
+  const getCurrentTimeHHMM = () => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    setMilestoneTimeInput(getCurrentTimeHHMM());
+    setMilestoneTextInput('');
+  }, [selectedDate]);
 
   const [reminderEnabled, setReminderEnabled] = useState<boolean>(() => {
     try {
@@ -148,7 +166,17 @@ export default function App() {
     const existingIndex = reflections.findIndex(r => r.date === date);
     if (existingIndex > -1) {
       if (text.trim() === '') {
-        updated = reflections.filter(r => r.date !== date);
+        const existing = reflections[existingIndex];
+        if (!existing.milestones || existing.milestones.length === 0) {
+          updated = reflections.filter(r => r.date !== date);
+        } else {
+          updated = [...reflections];
+          updated[existingIndex] = {
+            ...existing,
+            text: '',
+            updatedAt: new Date().toISOString(),
+          };
+        }
       } else {
         updated = [...reflections];
         updated[existingIndex] = {
@@ -165,8 +193,89 @@ export default function App() {
           date,
           text,
           updatedAt: new Date().toISOString(),
+          milestones: [],
+          showMilestonesOnDashboard: true,
         }
       ];
+    }
+    setReflections(updated);
+    saveReflections(updated);
+  };
+
+  const handleToggleShowMilestones = (date: string) => {
+    let updated: DailyReflection[];
+    const existingIndex = reflections.findIndex(r => r.date === date);
+    if (existingIndex > -1) {
+      updated = [...reflections];
+      updated[existingIndex] = {
+        ...updated[existingIndex],
+        showMilestonesOnDashboard: !(updated[existingIndex].showMilestonesOnDashboard ?? true),
+      };
+    } else {
+      updated = [
+        ...reflections,
+        {
+          date,
+          text: '',
+          milestones: [],
+          showMilestonesOnDashboard: false,
+          updatedAt: new Date().toISOString(),
+        }
+      ];
+    }
+    setReflections(updated);
+    saveReflections(updated);
+  };
+
+  const handleAddMilestone = (date: string, time: string, text: string) => {
+    if (!text.trim() || !time) return;
+    const newMilestone = {
+      id: Math.random().toString(36).substring(2, 9),
+      time,
+      text: text.trim(),
+    };
+
+    let updated: DailyReflection[];
+    const existingIndex = reflections.findIndex(r => r.date === date);
+    if (existingIndex > -1) {
+      updated = [...reflections];
+      const existingRef = updated[existingIndex];
+      updated[existingIndex] = {
+        ...existingRef,
+        milestones: [...(existingRef.milestones || []), newMilestone],
+        showMilestonesOnDashboard: existingRef.showMilestonesOnDashboard ?? true,
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      updated = [
+        ...reflections,
+        {
+          date,
+          text: '',
+          milestones: [newMilestone],
+          showMilestonesOnDashboard: true,
+          updatedAt: new Date().toISOString(),
+        }
+      ];
+    }
+    setReflections(updated);
+    saveReflections(updated);
+  };
+
+  const handleDeleteMilestone = (date: string, id: string) => {
+    let updated: DailyReflection[];
+    const existingIndex = reflections.findIndex(r => r.date === date);
+    if (existingIndex > -1) {
+      updated = [...reflections];
+      const existingRef = updated[existingIndex];
+      const filteredMilestones = (existingRef.milestones || []).filter(m => m.id !== id);
+      updated[existingIndex] = {
+        ...existingRef,
+        milestones: filteredMilestones,
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      return;
     }
     setReflections(updated);
     saveReflections(updated);
@@ -572,6 +681,10 @@ export default function App() {
       year: 'numeric'
     });
   }, [selectedDate]);
+
+  const activeReflection = useMemo(() => {
+    return reflections.find(r => r.date === selectedDate);
+  }, [reflections, selectedDate]);
 
   return (
     <div id="app-root" className="min-h-screen bg-editorial-bg flex flex-col font-sans text-editorial-dark select-none">
@@ -1090,93 +1203,231 @@ export default function App() {
                 </div>
 
                 {/* Daily Reflection Section */}
-                <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-4">
-                  <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-2">
-                    <div className="flex items-center gap-2">
-                      <BookOpen size={16} className="text-editorial-accent" />
-                      <h3 className="text-xs font-mono text-editorial-accent tracking-widest uppercase">Daily Reflection</h3>
-                    </div>
-                    {reflections.some(r => r.date === selectedDate) && !isEditingReflection && (
+                <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-2">
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const ref = reflections.find(r => r.date === selectedDate);
-                            setReflectionInput(ref ? ref.text : '');
-                            setIsEditingReflection(true);
-                          }}
-                          className="text-[11px] font-mono font-semibold text-editorial-dark/50 hover:text-editorial-accent transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Edit2 size={12} />
-                          <span>Edit</span>
-                        </button>
-                        <span className="text-editorial-dark/20 text-xs">|</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm('Are you sure you want to clear your reflection for this day?')) {
-                              handleSaveReflection(selectedDate, '');
-                            }
-                          }}
-                          className="text-[11px] font-mono font-semibold text-editorial-dark/50 hover:text-rose-600 transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Trash2 size={12} />
-                          <span>Clear</span>
-                        </button>
+                        <BookOpen size={16} className="text-editorial-accent" />
+                        <h3 className="text-xs font-mono text-editorial-accent tracking-widest uppercase">Daily Reflection</h3>
                       </div>
-                    )}
-                  </div>
-
-                  {isEditingReflection || !reflections.some(r => r.date === selectedDate) ? (
-                    <div className="space-y-3">
-                      <textarea
-                        value={reflectionInput}
-                        onChange={(e) => setReflectionInput(e.target.value)}
-                        placeholder="How was your day? Write down any reflections, breakthroughs, challenges, or summary notes here..."
-                        rows={3}
-                        className="w-full rounded-none border border-editorial-dark/20 bg-editorial-bg p-3.5 text-xs font-serif font-medium text-editorial-dark outline-hidden focus:border-editorial-accent transition-all leading-relaxed"
-                      />
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleSaveReflection(selectedDate, reflectionInput);
-                            setIsEditingReflection(false);
-                          }}
-                          className="bg-editorial-accent hover:bg-editorial-dark text-editorial-bg font-mono text-xs px-4 py-2 rounded-none transition-colors flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Save size={13} />
-                          <span>Save Note</span>
-                        </button>
-                        {reflections.some(r => r.date === selectedDate) && (
+                      {reflections.some(r => r.date === selectedDate) && !isEditingReflection && (
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() => {
                               const ref = reflections.find(r => r.date === selectedDate);
                               setReflectionInput(ref ? ref.text : '');
-                              setIsEditingReflection(false);
+                              setIsEditingReflection(true);
                             }}
-                            className="border border-editorial-dark/20 hover:bg-editorial-dark/5 text-editorial-dark/70 font-mono text-xs px-4 py-2 rounded-none transition-colors cursor-pointer"
+                            className="text-[11px] font-mono font-semibold text-editorial-dark/50 hover:text-editorial-accent transition-colors flex items-center gap-1 cursor-pointer"
                           >
-                            Cancel
+                            <Edit2 size={12} />
+                            <span>Edit</span>
                           </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="relative pl-5 py-1">
-                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-editorial-accent" />
-                      <p className="text-sm font-serif italic text-editorial-dark/90 leading-relaxed whitespace-pre-wrap">
-                        "{reflections.find(r => r.date === selectedDate)?.text}"
-                      </p>
-                      {reflections.find(r => r.date === selectedDate)?.updatedAt && (
-                        <span className="block mt-2 text-[9px] font-mono text-editorial-dark/45 uppercase tracking-wider">
-                          Logged at {new Date(reflections.find(r => r.date === selectedDate)!.updatedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                          <span className="text-editorial-dark/20 text-xs">|</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm('Are you sure you want to clear your reflection for this day?')) {
+                                handleSaveReflection(selectedDate, '');
+                              }
+                            }}
+                            className="text-[11px] font-mono font-semibold text-editorial-dark/50 hover:text-rose-600 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 size={12} />
+                            <span>Clear</span>
+                          </button>
+                        </div>
                       )}
                     </div>
-                  )}
+
+                    {isEditingReflection || !reflections.some(r => r.date === selectedDate) ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={reflectionInput}
+                          onChange={(e) => setReflectionInput(e.target.value)}
+                          placeholder="How was your day? Write down any reflections, breakthroughs, challenges, or summary notes here..."
+                          rows={3}
+                          className="w-full rounded-none border border-editorial-dark/20 bg-editorial-bg p-3.5 text-xs font-serif font-medium text-editorial-dark outline-hidden focus:border-editorial-accent transition-all leading-relaxed"
+                        />
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSaveReflection(selectedDate, reflectionInput);
+                              setIsEditingReflection(false);
+                            }}
+                            className="bg-editorial-accent hover:bg-editorial-dark text-editorial-bg font-mono text-xs px-4 py-2 rounded-none transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Save size={13} />
+                            <span>Save Note</span>
+                          </button>
+                          {reflections.some(r => r.date === selectedDate) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const ref = reflections.find(r => r.date === selectedDate);
+                                setReflectionInput(ref ? ref.text : '');
+                                setIsEditingReflection(false);
+                              }}
+                              className="border border-editorial-dark/20 hover:bg-editorial-dark/5 text-editorial-dark/70 font-mono text-xs px-4 py-2 rounded-none transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative pl-5 py-1">
+                        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-editorial-accent" />
+                        <p className="text-sm font-serif italic text-editorial-dark/90 leading-relaxed whitespace-pre-wrap">
+                          "{reflections.find(r => r.date === selectedDate)?.text}"
+                        </p>
+                        {reflections.find(r => r.date === selectedDate)?.updatedAt && (
+                          <span className="block mt-2 text-[9px] font-mono text-editorial-dark/45 uppercase tracking-wider">
+                            Logged at {new Date(reflections.find(r => r.date === selectedDate)!.updatedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Milestones & Checkpoints Area */}
+                  <div className="border-t border-editorial-dark/10 pt-4 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Flag size={14} className="text-editorial-accent" />
+                        <h4 className="text-xs font-mono text-editorial-accent tracking-widest uppercase">Time-Stamped Milestones</h4>
+                      </div>
+                      
+                      {/* Dashboard Toggle Switch */}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleShowMilestones(selectedDate)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono border transition-all cursor-pointer ${
+                          activeReflection?.showMilestonesOnDashboard ?? true
+                            ? 'bg-editorial-accent-light text-editorial-accent border-editorial-accent/30'
+                            : 'bg-transparent text-editorial-dark/40 border-editorial-dark/15 hover:border-editorial-dark/30 hover:text-editorial-dark/70'
+                        }`}
+                        title="Toggle to display milestones as bubbles on the dashboard"
+                      >
+                        {activeReflection?.showMilestonesOnDashboard ?? true ? (
+                          <>
+                            <Eye size={12} />
+                            <span>Dashboard Bubbles: ON</span>
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff size={12} />
+                            <span>Dashboard Bubbles: OFF</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Milestone Add Form */}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (milestoneTextInput.trim()) {
+                          handleAddMilestone(selectedDate, milestoneTimeInput, milestoneTextInput);
+                          setMilestoneTextInput('');
+                        }
+                      }}
+                      className="flex flex-col sm:flex-row items-stretch gap-2"
+                    >
+                      <div className="flex items-center border border-editorial-dark/20 bg-editorial-bg px-2 shrink-0 sm:w-32">
+                        <Clock size={12} className="text-editorial-dark/40 mr-1.5" />
+                        <input
+                          type="time"
+                          value={milestoneTimeInput}
+                          onChange={(e) => setMilestoneTimeInput(e.target.value)}
+                          className="w-full bg-transparent border-0 text-xs font-mono text-editorial-dark p-1.5 outline-hidden focus:ring-0 cursor-pointer"
+                          required
+                        />
+                      </div>
+                      <div className="flex-1 flex items-stretch border border-editorial-dark/20 bg-editorial-bg px-2">
+                        <input
+                          type="text"
+                          value={milestoneTextInput}
+                          onChange={(e) => setMilestoneTextInput(e.target.value)}
+                          placeholder="Log a milestone (e.g. Completed morning jog, Met milestone 1)"
+                          className="w-full bg-transparent border-0 text-xs font-serif italic text-editorial-dark p-1.5 outline-hidden focus:ring-0 placeholder:text-editorial-dark/30"
+                          required
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="bg-editorial-dark hover:bg-editorial-accent hover:text-editorial-bg text-editorial-bg font-mono text-xs px-4 py-2 rounded-none transition-colors shrink-0 flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Plus size={13} />
+                        <span>Add</span>
+                      </button>
+                    </form>
+
+                    {/* Timeline List of Milestones */}
+                    {activeReflection?.milestones && activeReflection.milestones.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                        {[...activeReflection.milestones]
+                          .sort((a, b) => a.time.localeCompare(b.time))
+                          .map((ms) => (
+                            <div
+                              key={ms.id}
+                              className="flex items-center justify-between border border-editorial-dark/10 p-2.5 bg-editorial-dark/[0.01] hover:bg-editorial-dark/[0.03] transition-all"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="shrink-0 font-mono text-[10px] font-bold bg-editorial-accent/10 text-editorial-accent px-1.5 py-0.5 border border-editorial-accent/15">
+                                  {ms.time}
+                                </span>
+                                <span className="text-xs font-serif italic text-editorial-dark/85 truncate leading-relaxed">
+                                  {ms.text}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMilestone(selectedDate, ms.id)}
+                                className="text-editorial-dark/30 hover:text-rose-600 p-1 transition-colors cursor-pointer"
+                                title="Delete milestone"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] font-sans text-editorial-dark/45 italic py-1">
+                        No timestamped milestones recorded for this day yet. Add key checkpoints above to keep a clear timeline.
+                      </p>
+                    )}
+                  </div>
                 </div>
+
+                {/* Milestone Bubbles on Dashboard */}
+                {activeReflection?.showMilestonesOnDashboard && activeReflection.milestones && activeReflection.milestones.length > 0 && (
+                  <div className="bg-editorial-bg p-5 rounded-none border border-editorial-dark/15 border-l-2 border-l-editorial-accent space-y-3">
+                    <div className="flex items-center gap-1.5">
+                      <Flag size={13} className="text-editorial-accent" />
+                      <h4 className="text-[10px] font-mono text-editorial-accent tracking-widest uppercase font-semibold">Timeline Checkpoints</h4>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[...activeReflection.milestones]
+                        .sort((a, b) => a.time.localeCompare(b.time))
+                        .map((ms) => (
+                          <div
+                            key={ms.id}
+                            className="flex items-center gap-2 bg-editorial-accent-light/50 border border-editorial-accent/20 px-3.5 py-1.5 rounded-full shadow-xs transition-all duration-200"
+                          >
+                            <span className="font-mono text-[9px] font-bold bg-editorial-accent text-editorial-bg px-2 py-0.5 rounded-full select-none">
+                              {ms.time}
+                            </span>
+                            <span className="text-xs font-serif font-medium text-editorial-dark/95 leading-none">
+                              {ms.text}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Tracker Cards Grid Display */}
                 <div>

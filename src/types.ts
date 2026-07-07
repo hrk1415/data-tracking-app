@@ -95,9 +95,17 @@ export const COLOR_MAP: Record<string, { bg: string; text: string; border: strin
   },
 };
 
+export interface Milestone {
+  id: string;
+  time: string; // HH:MM
+  text: string;
+}
+
 export interface DailyReflection {
   date: string; // YYYY-MM-DD
   text: string;
   updatedAt?: string;
+  milestones?: Milestone[];
+  showMilestonesOnDashboard?: boolean;
 }
 
