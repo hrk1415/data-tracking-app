@@ -33,13 +33,21 @@ interface TrackerAnalyticsProps {
   logs: LogEntry[];
 }
 
-type TimeRange = '7' | '14' | '30';
+type TimeMode = '7' | '30' | '90' | 'custom';
 
 export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   const [selectedTrackerId, setSelectedTrackerId] = useState<string>(
     trackers.length > 0 ? trackers[0].id : ''
   );
-  const [timeRange, setTimeRange] = useState<TimeRange>('7');
+  const [timeMode, setTimeMode] = useState<TimeMode>('7');
+  const [customStartDate, setCustomStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [customEndDate, setCustomEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
 
   // Ensure selected tracker is still valid
   const selectedTracker = useMemo(() => {
@@ -53,18 +61,38 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     }
   }, [trackers, selectedTrackerId]);
 
-  // Calculate past dates in YYYY-MM-DD format based on range
+  // Calculate past dates in YYYY-MM-DD format based on range or custom dates
   const dateRangeList = useMemo(() => {
-    const days = parseInt(timeRange);
     const list: string[] = [];
-    const today = new Date();
 
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
-      list.push(d.toISOString().split('T')[0]);
+    if (timeMode !== 'custom') {
+      const days = parseInt(timeMode);
+      const today = new Date();
+
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+        list.push(d.toISOString().split('T')[0]);
+      }
+    } else {
+      if (!customStartDate || !customEndDate) return [];
+
+      const start = new Date(customStartDate + 'T00:00:00');
+      const end = new Date(customEndDate + 'T00:00:00');
+
+      if (end < start) {
+        return [];
+      }
+
+      const current = new Date(start);
+      let safetyCounter = 0;
+      while (current <= end && safetyCounter < 366) {
+        list.push(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+        safetyCounter++;
+      }
     }
     return list;
-  }, [timeRange]);
+  }, [timeMode, customStartDate, customEndDate]);
 
   // Calculate chart data for selected tracker
   const chartData = useMemo(() => {
@@ -242,22 +270,66 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           </div>
         </div>
 
-        {/* Timeframe Range */}
-        <div className="flex rounded-none bg-editorial-dark/5 p-1 self-start sm:self-auto border border-editorial-dark/10">
-          {(['7', '14', '30'] as TimeRange[]).map((range) => (
-            <button
-              key={range}
-              type="button"
-              onClick={() => setTimeRange(range)}
-              className={`rounded-none px-4 py-1.5 text-xs font-mono font-medium transition-all cursor-pointer ${
-                timeRange === range
-                  ? 'bg-editorial-accent text-editorial-bg'
-                  : 'text-editorial-dark/60 hover:text-editorial-dark'
-              }`}
-            >
-              Last {range} Days
-            </button>
-          ))}
+        {/* Timeframe Range Picker */}
+        <div className="flex flex-col gap-2.5 sm:items-end">
+          <span className="text-[10px] font-mono font-medium text-editorial-dark/50 uppercase tracking-widest">Time Period</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex rounded-none bg-editorial-dark/5 p-1 border border-editorial-dark/10">
+              {(['7', '30', '90'] as const).map((range) => (
+                <button
+                  key={range}
+                  type="button"
+                  onClick={() => setTimeMode(range)}
+                  className={`rounded-none px-3.5 py-1.5 text-xs font-mono font-medium transition-all cursor-pointer ${
+                    timeMode === range
+                      ? 'bg-editorial-accent text-editorial-bg'
+                      : 'text-editorial-dark/60 hover:text-editorial-dark'
+                  }`}
+                >
+                  {range}D
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setTimeMode('custom')}
+                className={`rounded-none px-3.5 py-1.5 text-xs font-mono font-medium transition-all cursor-pointer ${
+                  timeMode === 'custom'
+                    ? 'bg-editorial-accent text-editorial-bg'
+                    : 'text-editorial-dark/60 hover:text-editorial-dark'
+                }`}
+              >
+                Custom
+              </button>
+            </div>
+
+            {/* Custom inputs */}
+            {timeMode === 'custom' && (
+              <div className="flex items-center gap-2 border border-editorial-dark/15 bg-editorial-bg/50 p-1">
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className="text-[9px] font-mono font-medium text-editorial-dark/40 uppercase">From</span>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    max={customEndDate || undefined}
+                    className="rounded-none border border-editorial-dark/15 bg-editorial-bg px-2 py-0.5 text-xs font-mono text-editorial-dark focus:border-editorial-accent focus:outline-hidden"
+                  />
+                </div>
+                <span className="text-editorial-dark/30 text-[10px] font-mono">—</span>
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className="text-[9px] font-mono font-medium text-editorial-dark/40 uppercase">To</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    min={customStartDate || undefined}
+                    max={new Date().toISOString().split('T')[0]}
+                    className="rounded-none border border-editorial-dark/15 bg-editorial-bg px-2 py-0.5 text-xs font-mono text-editorial-dark focus:border-editorial-accent focus:outline-hidden"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
