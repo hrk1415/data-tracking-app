@@ -67,7 +67,7 @@ interface Insight {
 type TimeMode = '7' | '30' | '90' | 'custom';
 
 export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
-  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly' | 'heatmap' | 'category_baselines' | 'monthly_overview'>('individual');
+  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly' | 'heatmap' | 'category_baselines' | 'monthly_overview' | 'calendar_view'>('individual');
   const [selectedTrackerId, setSelectedTrackerId] = useState<string>(
     trackers.length > 0 ? trackers[0].id : ''
   );
@@ -82,6 +82,10 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   });
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  const [selectedCalendarDayStr, setSelectedCalendarDayStr] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
 
   const availableMonths = useMemo(() => {
     const list: { value: string; label: string }[] = [];
@@ -130,6 +134,106 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   const numericTrackers = useMemo(() => trackers.filter(t => t.type === 'numeric'), [trackers]);
   const booleanTrackers = useMemo(() => trackers.filter(t => t.type === 'boolean'), [trackers]);
   const ratingTrackers = useMemo(() => trackers.filter(t => t.type === 'rating'), [trackers]);
+
+  // Safe active calendar day indicator
+  const activeCalendarDayStr = useMemo(() => {
+    if (selectedCalendarDayStr.startsWith(selectedMonth)) {
+      return selectedCalendarDayStr;
+    }
+    return `${selectedMonth}-01`;
+  }, [selectedCalendarDayStr, selectedMonth]);
+
+  // Memoized array of days for the selected month to build heatmap calendar
+  const calendarDays = useMemo(() => {
+    if (!selectedMonth) return [];
+    const [year, month] = selectedMonth.split('-').map(Number);
+    
+    // Days in that month
+    const totalDays = new Date(year, month, 0).getDate();
+    
+    // Day of the week for the 1st of the month (0 = Sun, 1 = Mon, ..., 6 = Sat)
+    const firstDayIndex = new Date(year, month - 1, 1).getDay();
+    
+    const days = [];
+    
+    // Padding at the start of calendar month
+    for (let i = 0; i < firstDayIndex; i++) {
+      days.push({ isPadding: true, key: `pad-${i}`, dayNum: 0, dateStr: '', isToday: false, isFuture: false, completionRate: 0, completedTrackersCount: 0, totalTrackersCount: 0, trackersWithLogsCount: 0, trackerDetails: [] });
+    }
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    // Days of the month
+    for (let d = 1; d <= totalDays; d++) {
+      const dateStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+      const isFuture = dateStr > todayStr;
+      const isToday = dateStr === todayStr;
+      
+      const dayLogs = logs.filter(l => l.date === dateStr);
+      let completedTrackersCount = 0;
+      const trackersWithLogsCount = new Set(dayLogs.map(l => l.trackerId)).size;
+      
+      const trackerDetails = weeklyTrackers.map(tracker => {
+        const trackerLogs = dayLogs.filter(l => l.trackerId === tracker.id);
+        const isLogged = trackerLogs.length > 0;
+        
+        let value = 0;
+        if (isLogged) {
+          if (tracker.type === 'counter') {
+            value = trackerLogs.reduce((sum, l) => sum + l.value, 0);
+          } else {
+            value = trackerLogs[trackerLogs.length - 1].value;
+          }
+        }
+        
+        const hasGoal = tracker.targetValue !== undefined && tracker.targetValue > 0;
+        let isGoalMet = false;
+        if (hasGoal) {
+          isGoalMet = isLogged && value >= tracker.targetValue!;
+        } else {
+          isGoalMet = isLogged; // Unified completion: logging counts if no goal exists
+        }
+        
+        if (isGoalMet) {
+          completedTrackersCount++;
+        }
+        
+        return {
+          id: tracker.id,
+          name: tracker.name,
+          color: tracker.color,
+          type: tracker.type,
+          unit: tracker.unit,
+          targetValue: tracker.targetValue,
+          isLogged,
+          value,
+          hasGoal,
+          isGoalMet
+        };
+      });
+      
+      const totalTrackersCount = weeklyTrackers.length;
+      const completionRate = totalTrackersCount > 0 
+        ? Math.round((completedTrackersCount / totalTrackersCount) * 100) 
+        : 0;
+        
+      days.push({
+        isPadding: false,
+        key: `day-${d}`,
+        dayNum: d,
+        dateStr,
+        isToday,
+        isFuture,
+        completionRate,
+        completedTrackersCount,
+        totalTrackersCount,
+        trackersWithLogsCount,
+        trackerDetails,
+      });
+    }
+    
+    return days;
+  }, [selectedMonth, logs, weeklyTrackers]);
 
   // Monthly Overview calculations
   const monthlyOverviewStats = useMemo(() => {
@@ -1466,6 +1570,18 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
             }`}
           >
             Monthly Overview
+          </button>
+          <button
+            type="button"
+            id="tab-calendar-view"
+            onClick={() => setAnalyticsView('calendar_view')}
+            className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
+              analyticsView === 'calendar_view'
+                ? 'border-editorial-accent text-editorial-accent'
+                : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
+            }`}
+          >
+            Calendar View
           </button>
         </div>
 
@@ -2824,6 +2940,334 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
               </p>
             </div>
           )}
+        </div>
+      ) : analyticsView === 'calendar_view' ? (
+        /* Calendar Heatmap View */
+        <div className="space-y-8">
+          {/* Header Block with Month Picker inside */}
+          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 className="font-serif font-medium text-lg text-editorial-dark">
+                Calendar Performance Heatmap
+              </h3>
+              <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">
+                Visualizing daily goal completions and activity intensity across all active trackers.
+              </p>
+            </div>
+            {/* Month Dropdown Select */}
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider">Select Month:</span>
+              <div className="relative">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => {
+                    setSelectedMonth(e.target.value);
+                  }}
+                  className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-1.5 text-xs font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
+                >
+                  {availableMonths.map(m => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={13} />
+              </div>
+            </div>
+          </div>
+
+          {/* KPI Summary Row */}
+          {(() => {
+            const monthDaysOnly = calendarDays.filter(d => !d.isPadding);
+            const nonFutureDays = monthDaysOnly.filter(d => !d.isFuture);
+            
+            const totalCompletionRates = nonFutureDays.reduce((sum, d) => sum + d.completionRate, 0);
+            const avgMonthCompletion = nonFutureDays.length > 0 
+              ? Math.round(totalCompletionRates / nonFutureDays.length) 
+              : 0;
+            
+            const perfectDaysCount = nonFutureDays.filter(d => d.completionRate === 100).length;
+            
+            const maxRate = nonFutureDays.length > 0 ? Math.max(...nonFutureDays.map(d => d.completionRate)) : 0;
+            const bestDays = nonFutureDays.filter(d => d.completionRate === maxRate && maxRate > 0);
+            const bestDayLabel = bestDays.length > 0
+              ? `${new Date(bestDays[0].dateStr + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (${maxRate}%)`
+              : '—';
+            
+            const activeDaysCount = nonFutureDays.filter(d => d.trackersWithLogsCount > 0).length;
+
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="border border-editorial-dark/10 p-4 bg-editorial-bg/50">
+                  <span className="block text-[9px] font-mono text-editorial-dark/45 uppercase tracking-widest">Average Goal Completion</span>
+                  <p className="text-2xl font-mono font-medium text-editorial-dark mt-1">
+                    {avgMonthCompletion}%
+                  </p>
+                  <span className="text-[10px] font-sans italic text-editorial-dark/50">Daily completion rate avg</span>
+                </div>
+                <div className="border border-editorial-dark/10 p-4 bg-editorial-bg/50">
+                  <span className="block text-[9px] font-mono text-editorial-dark/45 uppercase tracking-widest">Perfect Days</span>
+                  <p className="text-2xl font-mono font-medium text-editorial-accent mt-1">
+                    {perfectDaysCount} <span className="text-xs font-sans font-normal text-editorial-dark/50">/ {nonFutureDays.length} d</span>
+                  </p>
+                  <span className="text-[10px] font-sans italic text-editorial-dark/50">100% goals completed</span>
+                </div>
+                <div className="border border-editorial-dark/10 p-4 bg-editorial-bg/50">
+                  <span className="block text-[9px] font-mono text-editorial-dark/45 uppercase tracking-widest">Best Completion Day</span>
+                  <p className="text-xl font-mono font-medium text-editorial-dark mt-1 truncate">
+                    {bestDayLabel}
+                  </p>
+                  <span className="text-[10px] font-sans italic text-editorial-dark/50">Peak achievement rate</span>
+                </div>
+                <div className="border border-editorial-dark/10 p-4 bg-editorial-bg/50">
+                  <span className="block text-[9px] font-mono text-editorial-dark/45 uppercase tracking-widest">Active Logging Days</span>
+                  <p className="text-2xl font-mono font-medium text-editorial-dark mt-1">
+                    {activeDaysCount} <span className="text-xs font-sans font-normal text-editorial-dark/50">/ {nonFutureDays.length} d</span>
+                  </p>
+                  <span className="text-[10px] font-sans italic text-editorial-dark/50">Days with at least 1 log</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Main Grid: Calendar Grid (Left) & Day details Inspector (Right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Calendar Grid Box */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-editorial-bg p-6 border border-editorial-dark/15 rounded-none space-y-6">
+                <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-4">
+                  <h4 className="font-serif font-medium text-base text-editorial-dark">
+                    Heatmap Calendar
+                  </h4>
+                  {/* Legend */}
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-editorial-dark/60 select-none">
+                    <span>Less</span>
+                    <span className="w-3.5 h-3.5 bg-editorial-dark/[0.04] border border-editorial-dark/10" title="0% completion" />
+                    <span className="w-3.5 h-3.5 bg-emerald-500/10 border border-emerald-500/20" title="1-25% completion" />
+                    <span className="w-3.5 h-3.5 bg-emerald-500/25 border border-emerald-500/30" title="26-50% completion" />
+                    <span className="w-3.5 h-3.5 bg-emerald-500/55 border border-emerald-500/40" title="51-75% completion" />
+                    <span className="w-3.5 h-3.5 bg-emerald-600 border border-emerald-700" title="76-100% completion" />
+                    <span>More</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-7 gap-2.5">
+                  {/* Day Headers (Sun to Sat) */}
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                    <div key={day} className="text-center text-[10px] font-mono font-bold text-editorial-dark/45 uppercase tracking-wider py-1">
+                      {day}
+                    </div>
+                  ))}
+
+                  {/* Calendar Days Cells */}
+                  {calendarDays.map((day, idx) => {
+                    if (day.isPadding) {
+                      return (
+                        <div 
+                          key={day.key || idx} 
+                          className="aspect-square bg-editorial-dark/[0.01] border border-dashed border-editorial-dark/5 opacity-30"
+                        />
+                      );
+                    }
+
+                    let cellClasses = "aspect-square border p-1.5 flex flex-col justify-between transition-all cursor-pointer relative hover:scale-[1.02] hover:shadow-xs";
+
+                    if (day.isFuture) {
+                      cellClasses += " bg-editorial-dark/[0.01] border-editorial-dark/5 opacity-30 cursor-not-allowed";
+                    } else if (day.completionRate === 0) {
+                      cellClasses += " bg-editorial-dark/[0.04] border-editorial-dark/10 hover:border-editorial-dark/20";
+                    } else {
+                      cellClasses += " border-editorial-dark/15";
+                      if (day.completionRate <= 25) {
+                        cellClasses += " bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/20";
+                      } else if (day.completionRate <= 50) {
+                        cellClasses += " bg-emerald-500/25 text-emerald-900 dark:text-emerald-200 border-emerald-500/30";
+                      } else if (day.completionRate <= 75) {
+                        cellClasses += " bg-emerald-500/55 text-emerald-950 dark:text-emerald-100 border-emerald-500/40";
+                      } else {
+                        cellClasses += " bg-emerald-600 text-white border-emerald-700";
+                      }
+                    }
+
+                    const isSelected = activeCalendarDayStr === day.dateStr;
+                    if (isSelected) {
+                      cellClasses += " ring-2 ring-editorial-accent ring-offset-2";
+                    } else if (day.isToday) {
+                      cellClasses += " ring-1 ring-editorial-accent ring-offset-1";
+                    }
+
+                    return (
+                      <div
+                        key={day.key}
+                        onClick={() => {
+                          if (!day.isFuture) {
+                            setSelectedCalendarDayStr(day.dateStr);
+                          }
+                        }}
+                        className={cellClasses}
+                        title={`Day ${day.dayNum}: ${day.completionRate}% completion`}
+                      >
+                        {/* Day Number */}
+                        <span className="text-xs font-mono font-bold leading-none">
+                          {day.dayNum}
+                        </span>
+
+                        {/* Tracker achievement indicator dots */}
+                        <div className="flex flex-wrap gap-0.5 max-w-full justify-end mt-auto">
+                          {day.trackerDetails?.filter(t => t.isLogged).slice(0, 4).map((tracker, tIdx) => (
+                            <span 
+                              key={tIdx}
+                              className="w-1.5 h-1.5 shrink-0 rounded-none border border-white/20" 
+                              style={{ 
+                                backgroundColor: tracker.isGoalMet 
+                                  ? (day.completionRate > 75 ? '#ffffff' : `var(--editorial-${tracker.color})`)
+                                  : 'rgba(0, 0, 0, 0.15)' 
+                              }}
+                              title={`${tracker.name}: ${tracker.isGoalMet ? 'Goal Met' : 'Logged'}`}
+                            />
+                          ))}
+                          {day.trackerDetails?.filter(t => t.isLogged).length > 4 && (
+                            <span className="text-[7px] font-mono leading-none font-bold opacity-75">
+                              +
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Day Details Inspector Box */}
+            <div className="lg:col-span-1">
+              {(() => {
+                const dayObj = calendarDays.find(d => !d.isPadding && d.dateStr === activeCalendarDayStr);
+                if (!dayObj) {
+                  return (
+                    <div className="bg-editorial-bg p-6 border border-editorial-dark/15 rounded-none text-center py-12 text-editorial-dark/40 italic font-serif h-full flex items-center justify-center">
+                      Select an active day on the calendar heatmap to inspect goal logs.
+                    </div>
+                  );
+                }
+
+                const dayDateStr = new Date(dayObj.dateStr + 'T12:00:00').toLocaleDateString(undefined, {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                });
+
+                const dayNotes = logs.filter(l => l.date === dayObj.dateStr && l.note && l.note.trim() !== '');
+
+                return (
+                  <div className="bg-editorial-bg p-6 border border-editorial-dark/15 rounded-none space-y-6 h-full flex flex-col justify-between">
+                    <div className="space-y-5">
+                      {/* Title & Date */}
+                      <div className="border-b border-editorial-dark/10 pb-4">
+                        <span className="block text-[8px] font-mono text-editorial-accent uppercase tracking-widest font-bold">
+                          Day Inspector
+                        </span>
+                        <h4 className="font-serif font-medium text-lg text-editorial-dark mt-1 leading-tight">
+                          {dayDateStr}
+                        </h4>
+                        <div className="flex items-center gap-2 mt-2 font-mono text-[10px] text-editorial-dark/50">
+                          <span>{dayObj.completedTrackersCount} of {dayObj.totalTrackersCount} metrics completed</span>
+                        </div>
+                      </div>
+
+                      {/* Goal Achievement Rate Card */}
+                      <div className="bg-editorial-dark/[0.02] border border-editorial-dark/10 p-4 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-mono font-medium">
+                          <span>Goal Achievement Rate</span>
+                          <span className="font-bold text-editorial-accent">{dayObj.completionRate}%</span>
+                        </div>
+                        <div className="w-full bg-editorial-dark/10 h-1.5 rounded-none overflow-hidden">
+                          <div 
+                            className="h-full bg-emerald-600 transition-all duration-300" 
+                            style={{ width: `${dayObj.completionRate}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* List of Tracker details for the selected day */}
+                      <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
+                        <span className="block text-[9px] font-mono uppercase tracking-wider text-editorial-dark/45 font-bold">
+                          Trackers Status
+                        </span>
+                        {dayObj.trackerDetails?.map((tracker, idx) => {
+                          const isCompleted = tracker.isGoalMet;
+                          const hasGoal = tracker.hasGoal;
+
+                          let statusText = 'Not Logged';
+                          let statusColor = 'text-editorial-dark/40';
+                          if (tracker.isLogged) {
+                            if (isCompleted) {
+                              statusText = hasGoal ? `Goal Met (${tracker.value})` : `Logged (${tracker.value})`;
+                              statusColor = 'text-emerald-700 font-bold dark:text-emerald-400';
+                            } else {
+                              statusText = `Incomplete (${tracker.value}/${tracker.targetValue})`;
+                              statusColor = 'text-amber-700 font-medium dark:text-amber-500';
+                            }
+                          }
+
+                          return (
+                            <div key={tracker.id || idx} className="flex items-center justify-between text-xs border-b border-editorial-dark/5 pb-2.5 last:border-0 last:pb-0">
+                              <div className="flex items-center gap-2">
+                                <span 
+                                  className="w-2 h-2 shrink-0 rounded-none" 
+                                  style={{ backgroundColor: `var(--editorial-${tracker.color})` }}
+                                />
+                                <span className="font-sans font-medium text-editorial-dark line-clamp-1">
+                                  {tracker.name}
+                                </span>
+                              </div>
+                              <div className={`text-[11px] font-mono text-right shrink-0 ${statusColor}`}>
+                                {statusText}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Day Notes section */}
+                      {dayNotes.length > 0 && (
+                        <div className="space-y-2.5 pt-4 border-t border-editorial-dark/10">
+                          <span className="block text-[9px] font-mono uppercase tracking-wider text-editorial-dark/45 font-bold">
+                            Day Notes
+                          </span>
+                          <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                            {dayNotes.map((note, noteIdx) => {
+                              const noteTracker = trackers.find(t => t.id === note.trackerId);
+                              return (
+                                <div key={note.id || noteIdx} className="bg-editorial-dark/[0.01] border-l-2 border-editorial-accent/30 p-2.5 text-xs font-sans">
+                                  {noteTracker && (
+                                    <span 
+                                      className="text-[9px] font-mono block mb-1 font-bold"
+                                      style={{ color: `var(--editorial-${noteTracker.color})` }}
+                                    >
+                                      {noteTracker.name}
+                                    </span>
+                                  )}
+                                  <p className="text-editorial-dark/80 italic font-serif">
+                                    "{note.note}"
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-[10px] font-mono text-editorial-dark/40 pt-4 border-t border-editorial-dark/5 mt-auto">
+                      Click any other cell in the calendar grid to inspect.
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
         </div>
       ) : (
         /* Weekly Habit Heatmap Grid View */

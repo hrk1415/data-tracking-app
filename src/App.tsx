@@ -1015,6 +1015,22 @@ export default function App() {
                   Export Logs (CSV)
                 </button>
 
+                {/* Import CSV Logs Button */}
+                <label
+                  id="import-csv-logs-button"
+                  className="flex items-center gap-1.5 bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border border-editorial-orange/20 text-editorial-orange font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer"
+                  title="Bulk-populate logs from an external CSV file"
+                >
+                  <Upload size={14} className="text-editorial-orange" />
+                  Import CSV Logs
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleImportCSVFile}
+                    className="hidden"
+                  />
+                </label>
+
                 {/* Import File Button */}
                 <label className="flex items-center gap-1.5 bg-editorial-bg hover:bg-editorial-accent-light border border-editorial-dark/20 text-editorial-dark font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer">
                   <Upload size={14} className="text-editorial-accent" />
@@ -1023,18 +1039,6 @@ export default function App() {
                     type="file"
                     accept=".json"
                     onChange={handleImportFile}
-                    className="hidden"
-                  />
-                </label>
-
-                {/* Import CSV Button */}
-                <label className="flex items-center gap-1.5 bg-editorial-bg hover:bg-editorial-orange-light/20 border border-editorial-dark/20 text-editorial-dark font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer" title="Import data from a CSV spreadsheet">
-                  <Upload size={14} className="text-editorial-orange" />
-                  Import CSV
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={handleImportCSVFile}
                     className="hidden"
                   />
                 </label>
