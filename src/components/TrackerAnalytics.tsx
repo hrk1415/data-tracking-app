@@ -7,6 +7,7 @@ import React, { useState, useMemo } from 'react';
 import { jsPDF } from 'jspdf';
 import { Tracker, LogEntry, COLOR_MAP, CATEGORIES } from '../types';
 import { LucideIcon } from './LucideIcon';
+import { ActivityConsistencySnapshot } from './ActivityConsistencySnapshot';
 import {
   TrendingUp,
   TrendingDown,
@@ -1549,6 +1550,9 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           </div>
         </div>
       </div>
+
+      {/* 7-Day Activity Consistency Snapshot (Weekly Bar Chart) */}
+      <ActivityConsistencySnapshot logs={logs} />
 
       {analyticsView === 'individual' ? (
         <>
