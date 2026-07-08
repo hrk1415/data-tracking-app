@@ -48,7 +48,8 @@ import {
   Search,
   Download,
   Upload,
-  AlertCircle
+  AlertCircle,
+  Briefcase
 } from 'lucide-react';
 
 export const iconMap = {
@@ -95,7 +96,8 @@ export const iconMap = {
   Search,
   Download,
   Upload,
-  AlertCircle
+  AlertCircle,
+  Briefcase
 };
 
 export type IconName = keyof typeof iconMap;

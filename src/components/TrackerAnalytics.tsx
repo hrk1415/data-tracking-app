@@ -316,6 +316,103 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     };
   }, [weeklyTrackers, logs]);
 
+  // Weekly Category Trend Analysis calculations
+  const categoryTrends = useMemo(() => {
+    const today = new Date();
+    
+    // Last 7 days
+    const last7Days: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+      last7Days.push(d.toISOString().split('T')[0]);
+    }
+
+    // Previous 7 days (days 8-14)
+    const prev7Days: string[] = [];
+    for (let i = 7; i < 14; i++) {
+      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+      prev7Days.push(d.toISOString().split('T')[0]);
+    }
+
+    return CATEGORIES.map(cat => {
+      // Get all trackers belonging to this category
+      const catTrackers = trackers.filter(t => t.category === cat.id);
+      const trackerIds = catTrackers.map(t => t.id);
+
+      // Filter logs for trackers in this category
+      const last7Logs = logs.filter(l => trackerIds.includes(l.trackerId) && last7Days.includes(l.date));
+      const prev7Logs = logs.filter(l => trackerIds.includes(l.trackerId) && prev7Days.includes(l.date));
+
+      const last7Count = last7Logs.length;
+      const prev7Count = prev7Logs.length;
+
+      const diff = last7Count - prev7Count;
+      let percentChange = 0;
+      if (prev7Count > 0) {
+        percentChange = Math.round((diff / prev7Count) * 100);
+      } else if (last7Count > 0) {
+        percentChange = 100;
+      }
+
+      // Check for improvement/decline
+      let trendStatus: 'improving' | 'declining' | 'stable' = 'stable';
+      if (diff > 0) {
+        trendStatus = 'improving';
+      } else if (diff < 0) {
+        trendStatus = 'declining';
+      }
+
+      // Calculate Goal Completion Rates if there are trackers with daily goals
+      const trackersWithGoals = catTrackers.filter(t => t.targetValue !== undefined && t.targetValue > 0);
+      
+      let last7GoalRate: number | null = null;
+      let prev7GoalRate: number | null = null;
+      let goalRateDiff: number | null = null;
+
+      if (trackersWithGoals.length > 0) {
+        const getCompletionRate = (dates: string[], periodLogs: LogEntry[]) => {
+          let metCount = 0;
+          let totalCount = 0;
+
+          dates.forEach(dateStr => {
+            trackersWithGoals.forEach(t => {
+              totalCount++;
+              const dayLogs = periodLogs.filter(l => l.trackerId === t.id && l.date === dateStr);
+              let totalValue = 0;
+              if (t.type === 'counter') {
+                totalValue = dayLogs.reduce((sum, l) => sum + l.value, 0);
+              } else if (dayLogs.length > 0) {
+                totalValue = dayLogs[dayLogs.length - 1].value;
+              }
+              if (totalValue >= t.targetValue!) {
+                metCount++;
+              }
+            });
+          });
+
+          return totalCount > 0 ? Math.round((metCount / totalCount) * 100) : 0;
+        };
+
+        last7GoalRate = getCompletionRate(last7Days, logs);
+        prev7GoalRate = getCompletionRate(prev7Days, logs);
+        goalRateDiff = last7GoalRate - prev7GoalRate;
+      }
+
+      return {
+        category: cat,
+        trackersCount: catTrackers.length,
+        last7Count,
+        prev7Count,
+        diff,
+        percentChange,
+        trendStatus,
+        last7GoalRate,
+        prev7GoalRate,
+        goalRateDiff,
+      };
+    });
+  }, [trackers, logs]);
+
   // Calculations for KPI Cards
   const stats = useMemo(() => {
     if (!selectedTracker || chartData.length === 0) {
@@ -1224,6 +1321,137 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                   );
                 })}
               </div>
+            </div>
+          </div>
+
+          {/* Weekly Category Trend Analysis */}
+          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-5">
+            <div>
+              <h4 className="font-serif font-medium text-lg text-editorial-dark flex items-center gap-2">
+                Weekly Category Trend Analysis
+                <span className="inline-flex items-center text-[9px] font-mono text-editorial-accent bg-editorial-accent-light border border-editorial-accent/25 px-2 py-0.5 rounded-none">
+                  Last 7 Days vs Prior 7 Days
+                </span>
+              </h4>
+              <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">
+                Calculates percentage growth and target goal progress trends for each tracker category compared to the prior week
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {categoryTrends.map(({ category, trackersCount, last7Count, prev7Count, diff, percentChange, trendStatus, last7GoalRate, prev7GoalRate, goalRateDiff }) => {
+                const colorStyles = COLOR_MAP[category.color] || COLOR_MAP.emerald;
+                
+                return (
+                  <div 
+                    key={category.id} 
+                    className="p-5 bg-editorial-bg border border-editorial-dark/12 flex flex-col justify-between hover:border-editorial-dark/30 transition-all space-y-4"
+                  >
+                    {/* Header Row */}
+                    <div className="flex items-center justify-between gap-2 border-b border-editorial-dark/5 pb-3">
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-none text-white ${colorStyles.bg} border border-editorial-dark/10`}>
+                          <LucideIcon name={category.icon} size={15} />
+                        </div>
+                        <span className="font-serif font-semibold text-sm text-editorial-dark truncate">
+                          {category.name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-editorial-dark/45 uppercase tracking-wider shrink-0">
+                        {trackersCount} {trackersCount === 1 ? 'tracker' : 'trackers'}
+                      </span>
+                    </div>
+
+                    {/* Middle Section: Logging Volume Trend */}
+                    <div className="space-y-1.5">
+                      <span className="block text-[9px] font-mono font-semibold uppercase tracking-widest text-editorial-dark/40">
+                        Logging Activity Volume
+                      </span>
+                      
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-2xl font-mono font-light text-editorial-dark">
+                            {diff > 0 ? `+${percentChange}%` : `${percentChange}%`}
+                          </span>
+                          <span className="text-[10px] font-mono text-editorial-dark/50">growth</span>
+                        </div>
+
+                        {/* Trend Status Badge */}
+                        {trendStatus === 'improving' ? (
+                          <div className="inline-flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 text-[10px] font-mono font-semibold px-2 py-0.5">
+                            <TrendingUp size={12} className="stroke-[2.5px] text-emerald-700" />
+                            <span>Improving</span>
+                          </div>
+                        ) : trendStatus === 'declining' ? (
+                          <div className="inline-flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 text-rose-800 text-[10px] font-mono font-semibold px-2 py-0.5">
+                            <TrendingDown size={12} className="stroke-[2.5px] text-rose-700" />
+                            <span>Declining</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1 bg-editorial-dark/5 border border-editorial-dark/10 text-editorial-dark/50 text-[10px] font-mono px-2 py-0.5">
+                            <span>Stable</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-[11px] font-sans text-editorial-dark/65 flex justify-between">
+                        <span>Last 7 Days: <strong className="font-mono text-editorial-dark">{last7Count}</strong> logs</span>
+                        <span className="text-editorial-dark/40">vs {prev7Count} prior</span>
+                      </div>
+                    </div>
+
+                    {/* Bottom Section: Target Goal Progress Trend */}
+                    <div className="pt-3 border-t border-editorial-dark/5 bg-editorial-dark/[0.01] -mx-5 -mb-5 p-4 mt-auto">
+                      <span className="block text-[9px] font-mono font-semibold uppercase tracking-widest text-editorial-dark/45 mb-1.5">
+                        Target Habit Success
+                      </span>
+
+                      {last7GoalRate !== null ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-serif font-medium text-editorial-dark">
+                              Goal Success Rate: <span className="font-mono text-editorial-accent font-bold">{last7GoalRate}%</span>
+                            </span>
+                            
+                            {/* Visual Comparison Indicator */}
+                            {goalRateDiff !== null && goalRateDiff > 0 ? (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-500/5 px-1.5 py-0.5 border border-emerald-500/10">
+                                ▲ +{goalRateDiff}%
+                              </span>
+                            ) : goalRateDiff !== null && goalRateDiff < 0 ? (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-bold text-rose-700 bg-rose-500/5 px-1.5 py-0.5 border border-rose-500/10">
+                                ▼ {goalRateDiff}%
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center text-[10px] font-mono text-editorial-dark/45 bg-editorial-dark/5 px-1.5 py-0.5">
+                                Stable (0%)
+                              </span>
+                            )}
+                          </div>
+                          <div className="w-full bg-editorial-dark/10 h-1.5 rounded-none overflow-hidden">
+                            <div 
+                              className={`h-full ${colorStyles.bg}`} 
+                              style={{ width: `${last7GoalRate}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[9px] font-mono text-editorial-dark/40">
+                            <span>Prior week: {prev7GoalRate}% success</span>
+                            {goalRateDiff !== null && (
+                              <span>
+                                {goalRateDiff > 0 ? 'Improving weekly trend' : goalRateDiff < 0 ? 'Declining weekly trend' : 'Consistent performance'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] font-sans italic text-editorial-dark/40 block py-1">
+                          No active daily goals configured
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
