@@ -8,6 +8,7 @@ import { jsPDF } from 'jspdf';
 import { Tracker, LogEntry, COLOR_MAP, CATEGORIES } from '../types';
 import { LucideIcon } from './LucideIcon';
 import { ActivityConsistencySnapshot } from './ActivityConsistencySnapshot';
+import { WeeklyTextSummary } from './WeeklyTextSummary';
 import {
   TrendingUp,
   TrendingDown,
@@ -1553,6 +1554,9 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
 
       {/* 7-Day Activity Consistency Snapshot (Weekly Bar Chart) */}
       <ActivityConsistencySnapshot logs={logs} />
+
+      {/* Weekly Text-Based Editorial Progress Summary */}
+      <WeeklyTextSummary trackers={trackers} logs={logs} />
 
       {analyticsView === 'individual' ? (
         <>
