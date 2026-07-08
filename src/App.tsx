@@ -14,6 +14,7 @@ import { TrackerAnalytics } from './components/TrackerAnalytics';
 import { LogHistory } from './components/LogHistory';
 import { ManageTrackers } from './components/ManageTrackers';
 import { LucideIcon } from './components/LucideIcon';
+import { GoalNotesPanel } from './components/GoalNotesPanel';
 import {
   LayoutDashboard,
   BarChart2,
@@ -1824,6 +1825,14 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                {/* Goal Notes Chronological Scan Panel */}
+                <GoalNotesPanel
+                  reflections={reflections}
+                  trackers={trackers}
+                  logs={logs}
+                  onSaveGoalNote={handleSaveGoalNote}
+                />
 
                 {/* Tracker Cards Grid Display */}
                 <div>
