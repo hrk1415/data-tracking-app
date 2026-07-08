@@ -186,6 +186,44 @@ export function LogHistory({ trackers, logs, onDeleteLog, onUpdateLog }: LogHist
         </div>
       </div>
 
+      {/* Active Filters Info Bar */}
+      {(searchQuery || filterTrackerId !== 'all' || filterCategory !== 'all') && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-editorial-accent-light/15 border-l-2 border-editorial-accent text-xs text-editorial-dark/80 font-sans">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono font-semibold uppercase tracking-wider text-[10px] text-editorial-dark/50">Filter Status:</span>
+            <span className="font-mono bg-editorial-bg px-2 py-0.5 border border-editorial-dark/10">
+              {filteredLogs.length} of {logs.length} entries match
+            </span>
+            {searchQuery && (
+              <span className="bg-editorial-bg px-2 py-0.5 border border-editorial-dark/10 truncate max-w-[200px]" title={`Query: "${searchQuery}"`}>
+                Search: <strong className="font-serif font-semibold">"{searchQuery}"</strong>
+              </span>
+            )}
+            {filterTrackerId !== 'all' && (
+              <span className="bg-editorial-bg px-2 py-0.5 border border-editorial-dark/10">
+                Tracker: <strong className="font-serif font-semibold">{(trackers.find(t => t.id === filterTrackerId))?.name || ''}</strong>
+              </span>
+            )}
+            {filterCategory !== 'all' && (
+              <span className="bg-editorial-bg px-2 py-0.5 border border-editorial-dark/10 capitalize">
+                Category: <strong className="font-serif font-semibold">{filterCategory}</strong>
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery('');
+              setFilterTrackerId('all');
+              setFilterCategory('all');
+            }}
+            className="text-[10px] font-mono uppercase tracking-widest text-editorial-accent hover:text-editorial-dark font-bold underline underline-offset-2 shrink-0 cursor-pointer"
+          >
+            Reset All Filters
+          </button>
+        </div>
+      )}
+
       {/* History List */}
       <div className="bg-editorial-bg rounded-none border border-editorial-dark/15 overflow-hidden">
         {filteredLogs.length > 0 ? (
