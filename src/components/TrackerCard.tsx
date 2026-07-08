@@ -188,9 +188,20 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
     <motion.div
       layout
       initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
+      animate={isCompleted ? {
+        opacity: 1,
+        y: [0, -8, 3, -1, 0],
+        scale: [1, 1.03, 0.98, 1.01, 1]
+      } : {
+        opacity: 1,
+        y: 0,
+        scale: 1
+      }}
       exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.3 }}
+      transition={{
+        duration: isCompleted ? 0.65 : 0.3,
+        ease: isCompleted ? "easeInOut" : "easeOut"
+      }}
       className={`relative flex flex-col rounded-none border p-5 transition-all duration-300 ${
         isCompleted
           ? `${colorStyles.border} bg-editorial-accent-light/10 ring-1 ring-editorial-accent/30`
