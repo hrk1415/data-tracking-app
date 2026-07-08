@@ -1345,32 +1345,19 @@ export default function App() {
                                   </div>
                                 </div>
 
-                                {/* Notes field for unmet goals */}
-                                {!isMet ? (
-                                  <div className="space-y-1 pt-1 border-t border-editorial-dark/5">
-                                    <label className="block text-[9px] font-mono uppercase tracking-wider text-editorial-dark/50">
-                                      Justification / Explanation:
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={currentNote}
-                                      onChange={(e) => handleSaveGoalNote(selectedDate, t.id, e.target.value)}
-                                      placeholder="Add a reason or note for not meeting this goal..."
-                                      className="w-full bg-transparent border-0 border-b border-editorial-dark/15 hover:border-editorial-dark/30 focus:border-editorial-accent p-1 text-[11px] font-serif italic text-editorial-dark outline-hidden focus:ring-0 placeholder:text-editorial-dark/30 placeholder:italic transition-all"
-                                    />
-                                  </div>
-                                ) : currentNote ? (
-                                  <div className="text-[10px] font-serif italic text-editorial-dark/50 pt-1 border-t border-editorial-dark/5 flex items-center justify-between">
-                                    <span>Note: "{currentNote}"</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSaveGoalNote(selectedDate, t.id, '')}
-                                      className="text-[9px] font-mono uppercase text-editorial-dark/40 hover:text-rose-600 transition-colors"
-                                    >
-                                      Clear Note
-                                    </button>
-                                  </div>
-                                ) : null}
+                                {/* Notes field for goals (both met and unmet) */}
+                                <div className="space-y-1 pt-1.5 border-t border-editorial-dark/5">
+                                  <label className="block text-[9px] font-mono uppercase tracking-wider text-editorial-dark/50">
+                                    {isMet ? 'Daily Goal Note / Context:' : 'Justification / Explanation:'}
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={currentNote}
+                                    onChange={(e) => handleSaveGoalNote(selectedDate, t.id, e.target.value)}
+                                    placeholder={isMet ? "Add context, achievements, or daily notes..." : "Add a reason or note for not meeting this goal..."}
+                                    className="w-full bg-transparent border-0 border-b border-editorial-dark/15 hover:border-editorial-dark/30 focus:border-editorial-accent p-1 text-[11px] font-serif italic text-editorial-dark outline-hidden focus:ring-0 placeholder:text-editorial-dark/30 placeholder:italic transition-all"
+                                  />
+                                </div>
                               </div>
                             );
                           })}
