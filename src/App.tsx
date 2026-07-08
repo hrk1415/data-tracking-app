@@ -580,6 +580,10 @@ export default function App() {
 
   // Calculate Goal Streaks: Current Streak and Longest (All-Time) Streak
   const goalStreaks = useMemo(() => {
+    if (!selectedDate) {
+      return { currentStreak: 0, longestStreak: 0 };
+    }
+
     // Helper to check if 100% daily goals were met on a specific date (YYYY-MM-DD)
     const is100PercentGoalsMet = (dStr: string) => {
       const activeTrackersWithGoals = trackers.filter(t => 
@@ -648,36 +652,38 @@ export default function App() {
     let currentStreak = 0;
     try {
       let checkDateObj = new Date(selectedDate + 'T12:00:00');
-      const safetyLimit = Math.max(365, dateList.length + 10);
-      let count = 0;
+      if (!isNaN(checkDateObj.getTime())) {
+        const safetyLimit = Math.max(365, dateList.length + 10);
+        let count = 0;
 
-      const metToday = is100PercentGoalsMet(selectedDate);
-      if (metToday) {
-        currentStreak = 1;
-        while (count < safetyLimit) {
-          checkDateObj.setDate(checkDateObj.getDate() - 1);
-          const prevDateStr = checkDateObj.toISOString().split('T')[0];
-          if (is100PercentGoalsMet(prevDateStr)) {
-            currentStreak++;
-          } else {
-            break;
-          }
-          count++;
-        }
-      } else {
-        checkDateObj.setDate(checkDateObj.getDate() - 1);
-        const prevDateStr = checkDateObj.toISOString().split('T')[0];
-        if (is100PercentGoalsMet(prevDateStr)) {
+        const metToday = is100PercentGoalsMet(selectedDate);
+        if (metToday) {
           currentStreak = 1;
           while (count < safetyLimit) {
             checkDateObj.setDate(checkDateObj.getDate() - 1);
-            const nextPrevDateStr = checkDateObj.toISOString().split('T')[0];
-            if (is100PercentGoalsMet(nextPrevDateStr)) {
+            const prevDateStr = checkDateObj.toISOString().split('T')[0];
+            if (is100PercentGoalsMet(prevDateStr)) {
               currentStreak++;
             } else {
               break;
             }
             count++;
+          }
+        } else {
+          checkDateObj.setDate(checkDateObj.getDate() - 1);
+          const prevDateStr = checkDateObj.toISOString().split('T')[0];
+          if (is100PercentGoalsMet(prevDateStr)) {
+            currentStreak = 1;
+            while (count < safetyLimit) {
+              checkDateObj.setDate(checkDateObj.getDate() - 1);
+              const nextPrevDateStr = checkDateObj.toISOString().split('T')[0];
+              if (is100PercentGoalsMet(nextPrevDateStr)) {
+                currentStreak++;
+              } else {
+                break;
+              }
+              count++;
+            }
           }
         }
       }
