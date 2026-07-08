@@ -65,7 +65,7 @@ interface Insight {
 type TimeMode = '7' | '30' | '90' | 'custom';
 
 export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
-  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly' | 'heatmap' | 'category_baselines'>('individual');
+  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly' | 'heatmap' | 'category_baselines' | 'monthly_overview'>('individual');
   const [selectedTrackerId, setSelectedTrackerId] = useState<string>(
     trackers.length > 0 ? trackers[0].id : ''
   );
@@ -80,6 +80,26 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   });
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  const availableMonths = useMemo(() => {
+    const list: { value: string; label: string }[] = [];
+    const today = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const label = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
+      list.push({
+        value: `${year}-${month}`,
+        label
+      });
+    }
+    return list;
+  }, []);
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    availableMonths[0]?.value || new Date().toISOString().slice(0, 7)
+  );
 
   // Determine duration of currently selected period in days
   const periodDays = useMemo(() => {
@@ -108,6 +128,143 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   const numericTrackers = useMemo(() => trackers.filter(t => t.type === 'numeric'), [trackers]);
   const booleanTrackers = useMemo(() => trackers.filter(t => t.type === 'boolean'), [trackers]);
   const ratingTrackers = useMemo(() => trackers.filter(t => t.type === 'rating'), [trackers]);
+
+  // Monthly Overview calculations
+  const monthlyOverviewStats = useMemo(() => {
+    if (!selectedMonth) return null;
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const totalDays = new Date(year, month, 0).getDate();
+    
+    // Generate all date strings for the month (YYYY-MM-DD)
+    const monthDates: string[] = [];
+    for (let d = 1; d <= totalDays; d++) {
+      const dateStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+      monthDates.push(dateStr);
+    }
+
+    // Filter logs for this month
+    const monthLogs = logs.filter(l => l.date && l.date.startsWith(selectedMonth));
+
+    // Calculate details for each tracker
+    const trackersStats = trackers.map(tracker => {
+      const trackerLogs = monthLogs.filter(l => l.trackerId === tracker.id);
+      const loggedDates = new Set(trackerLogs.map(l => l.date));
+      const loggedDaysCount = loggedDates.size;
+
+      // Calculate total value and average value
+      let totalValue = 0;
+      let averageValue = 0;
+
+      if (tracker.type === 'counter') {
+        // Counter sum
+        totalValue = trackerLogs.reduce((sum, l) => sum + l.value, 0);
+        averageValue = totalDays > 0 ? Math.round((totalValue / totalDays) * 10) / 10 : 0;
+      } else if (tracker.type === 'boolean') {
+        // Boolean sum
+        totalValue = trackerLogs.filter(l => l.value > 0).length;
+        averageValue = totalDays > 0 ? Math.round((totalValue / totalDays) * 100) : 0; // percentage of days completed
+      } else {
+        // Numeric and Rating - average of logged days
+        totalValue = trackerLogs.reduce((sum, l) => sum + l.value, 0);
+        averageValue = loggedDaysCount > 0 ? Math.round((totalValue / loggedDaysCount) * 10) / 10 : 0;
+      }
+
+      // Goal success rate
+      let goalsMetCount = 0;
+      const hasGoal = tracker.targetValue !== undefined && tracker.targetValue > 0;
+
+      if (hasGoal) {
+        monthDates.forEach(dateStr => {
+          const dayLogs = trackerLogs.filter(l => l.date === dateStr);
+          if (dayLogs.length > 0) {
+            let dayVal = 0;
+            if (tracker.type === 'counter') {
+              dayVal = dayLogs.reduce((sum, l) => sum + l.value, 0);
+            } else {
+              dayVal = dayLogs[dayLogs.length - 1].value;
+            }
+            if (dayVal >= tracker.targetValue!) {
+              goalsMetCount++;
+            }
+          }
+        });
+      }
+
+      const goalSuccessRate = hasGoal ? Math.round((goalsMetCount / totalDays) * 100) : null;
+
+      // Consecutive logging streak strictly within this month
+      let longestStreak = 0;
+      let currentStreak = 0;
+      monthDates.forEach(dateStr => {
+        if (loggedDates.has(dateStr)) {
+          currentStreak++;
+          if (currentStreak > longestStreak) {
+            longestStreak = currentStreak;
+          }
+        } else {
+          currentStreak = 0;
+        }
+      });
+
+      return {
+        ...tracker,
+        totalLogs: trackerLogs.length,
+        loggedDaysCount,
+        averageValue,
+        goalSuccessRate,
+        goalsMetCount,
+        longestStreak,
+      };
+    });
+
+    // Overall Month Summary Stats
+    const totalMonthLogsCount = monthLogs.length;
+    
+    // Consistency: average logging rate of all trackers
+    const avgLoggingRate = trackers.length > 0
+      ? Math.round((trackersStats.reduce((sum, t) => sum + (t.loggedDaysCount / totalDays), 0) / trackers.length) * 100)
+      : 0;
+
+    // Goals met across all trackers with goals
+    const trackersWithGoals = trackersStats.filter(t => t.targetValue !== undefined && t.targetValue > 0);
+    const totalGoalsPossible = trackersWithGoals.length * totalDays;
+    const totalGoalsMet = trackersWithGoals.reduce((sum, t) => sum + t.goalsMetCount, 0);
+    const overallGoalSuccessRate = totalGoalsPossible > 0
+      ? Math.round((totalGoalsMet / totalGoalsPossible) * 100)
+      : 0;
+
+    // Peak Logging Day
+    const dayLogCounts: Record<string, number> = {};
+    monthLogs.forEach(l => {
+      dayLogCounts[l.date] = (dayLogCounts[l.date] || 0) + 1;
+    });
+
+    let peakDay = 'N/A';
+    let peakCount = 0;
+    Object.entries(dayLogCounts).forEach(([dateStr, count]) => {
+      if (count > peakCount) {
+        peakCount = count;
+        peakDay = dateStr;
+      }
+    });
+
+    return {
+      selectedMonth,
+      totalDays,
+      trackersStats,
+      totalMonthLogsCount,
+      avgLoggingRate,
+      overallGoalSuccessRate,
+      peakDay,
+      peakCount,
+    };
+  }, [trackers, logs, selectedMonth]);
+
+  const filteredMonthlyTrackerStats = useMemo(() => {
+    if (!monthlyOverviewStats) return [];
+    if (selectedCategory === 'all') return monthlyOverviewStats.trackersStats;
+    return monthlyOverviewStats.trackersStats.filter(t => t.category === selectedCategory);
+  }, [monthlyOverviewStats, selectedCategory]);
 
   const [insights, setInsights] = useState<Insight[]>(() => {
     try {
@@ -1296,6 +1453,18 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           >
             Category Baselines
           </button>
+          <button
+            type="button"
+            id="tab-monthly-overview"
+            onClick={() => setAnalyticsView('monthly_overview')}
+            className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
+              analyticsView === 'monthly_overview'
+                ? 'border-editorial-accent text-editorial-accent'
+                : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
+            }`}
+          >
+            Monthly Overview
+          </button>
         </div>
 
         <div className="pb-2.5 sm:pb-0 flex shrink-0">
@@ -2371,6 +2540,282 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
               );
             })}
           </div>
+        </div>
+      ) : analyticsView === 'monthly_overview' ? (
+        /* Monthly Overview View */
+        <div className="space-y-8">
+          {/* Header Block with Month Picker inside */}
+          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 className="font-serif font-medium text-lg text-editorial-dark">
+                Monthly Performance Overview
+              </h3>
+              <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">
+                A calendar-month comprehensive audit of your daily averages, consistency ratios, and consecutive streaks.
+              </p>
+            </div>
+            {/* Month Dropdown Select */}
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider">Select Month:</span>
+              <div className="relative">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-1.5 text-xs font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
+                >
+                  {availableMonths.map(m => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={13} />
+              </div>
+            </div>
+          </div>
+
+          {monthlyOverviewStats ? (
+            <>
+              {/* KPIs Summary Bento Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Total Monthly Logs Card */}
+                <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4.5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-accent-light border border-editorial-accent/20 text-editorial-accent">
+                      <Activity size={22} className="stroke-[1.5px]" />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Total Month Logs</span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-3xl font-mono font-light text-editorial-dark leading-none">
+                          {monthlyOverviewStats.totalMonthLogsCount}
+                        </span>
+                        <span className="text-xs font-serif italic text-editorial-dark/75">entries</span>
+                      </div>
+                      <div className="text-[9px] font-mono text-editorial-dark/60 mt-1">
+                        {monthlyOverviewStats.peakCount > 0 ? (
+                          <span>Peak: {new Date(monthlyOverviewStats.peakDay + 'T12:00:00').toLocaleDateString('default', { month: 'short', day: 'numeric' })} ({monthlyOverviewStats.peakCount} logs)</span>
+                        ) : (
+                          <span>No logs recorded yet</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Overall Logging Consistency Score Card */}
+                <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4.5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-emerald-light border border-editorial-emerald/20 text-editorial-emerald">
+                      <CheckCircle2 size={22} className="stroke-[1.5px]" />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Logging Consistency</span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-3xl font-mono font-light text-editorial-dark leading-none">
+                          {monthlyOverviewStats.avgLoggingRate}%
+                        </span>
+                      </div>
+                      <div className="text-[9px] font-mono text-editorial-dark/60 mt-1">
+                        <span>Avg logging days across trackers</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Overall Goal Success Card */}
+                <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4.5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-amber-light border border-editorial-amber/20 text-editorial-amber">
+                      <Award size={22} className="stroke-[1.5px]" />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Goal Achievement</span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-3xl font-mono font-light text-editorial-dark leading-none">
+                          {monthlyOverviewStats.overallGoalSuccessRate}%
+                        </span>
+                      </div>
+                      <div className="text-[9px] font-mono text-editorial-dark/60 mt-1">
+                        <span>Percent of daily targets met</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Days of Month Card */}
+                <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4.5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-blue-light border border-editorial-blue/20 text-editorial-blue">
+                      <Calendar size={22} className="stroke-[1.5px]" />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Month Duration</span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-3xl font-mono font-light text-editorial-dark leading-none">
+                          {monthlyOverviewStats.totalDays}
+                        </span>
+                        <span className="text-xs font-serif italic text-editorial-dark/75">days</span>
+                      </div>
+                      <div className="text-[9px] font-mono text-editorial-dark/60 mt-1">
+                        <span>Month of {availableMonths.find(m => m.value === selectedMonth)?.label || selectedMonth}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Detailed Performance Metrics Table */}
+              <div className="bg-editorial-bg rounded-none border border-editorial-dark/15 overflow-hidden">
+                <div className="px-6 py-4.5 border-b border-editorial-dark/10 flex items-center justify-between bg-editorial-dark/[0.01]">
+                  <h4 className="font-serif font-medium text-sm text-editorial-dark">
+                    Detailed Tracker Performance
+                  </h4>
+                  {selectedCategory !== 'all' && (
+                    <span className="text-[10px] font-mono text-editorial-accent bg-editorial-accent-light border border-editorial-accent/20 px-2 py-0.5 uppercase tracking-wider">
+                      Category: {CATEGORIES.find(c => c.id === selectedCategory)?.name}
+                    </span>
+                  )}
+                </div>
+
+                {filteredMonthlyTrackerStats.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <Info size={28} className="mx-auto text-editorial-dark/35 mb-2.5 stroke-[1.25px]" />
+                    <p className="text-sm font-serif italic text-editorial-dark/60">
+                      No active trackers match your selected filters for this month.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-editorial-dark/10 text-[10px] font-mono text-editorial-dark/50 uppercase tracking-wider bg-editorial-dark/[0.02]">
+                          <th className="py-3 px-6 font-medium">Tracker & Category</th>
+                          <th className="py-3 px-4 font-medium text-center">Metric Type</th>
+                          <th className="py-3 px-4 font-medium text-right">Total Logs</th>
+                          <th className="py-3 px-4 font-medium text-right">Daily Avg Value</th>
+                          <th className="py-3 px-4 font-medium text-center">Logging Days</th>
+                          <th className="py-3 px-4 font-medium text-center">Longest Streak</th>
+                          <th className="py-3 px-6 font-medium text-right">Goal Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-editorial-dark/5 text-xs font-sans text-editorial-dark">
+                        {filteredMonthlyTrackerStats.map(tracker => {
+                          const cat = CATEGORIES.find(c => c.id === tracker.category);
+                          const isBoolean = tracker.type === 'boolean';
+                          const isRating = tracker.type === 'rating';
+                          const isCounter = tracker.type === 'counter';
+                          const loggingPercent = Math.round((tracker.loggedDaysCount / monthlyOverviewStats.totalDays) * 100);
+                          
+                          // Determine baseline consistency tag
+                          let consistencyStatus = 'Needs Focus';
+                          let consistencyColor = 'text-rose-700 bg-rose-50 border-rose-100';
+                          if (loggingPercent >= 80) {
+                            consistencyStatus = 'Highly Consistent';
+                            consistencyColor = 'text-emerald-700 bg-emerald-50 border-emerald-100';
+                          } else if (loggingPercent >= 40) {
+                            consistencyStatus = 'Moderately Consistent';
+                            consistencyColor = 'text-amber-700 bg-amber-50 border-amber-100';
+                          }
+
+                          return (
+                            <tr key={tracker.id} className="hover:bg-editorial-dark/[0.01] transition-colors">
+                              {/* Tracker Name & Category */}
+                              <td className="py-4 px-6">
+                                <div className="flex items-center gap-2.5">
+                                  <span 
+                                    className="w-2.5 h-2.5 shrink-0" 
+                                    style={{ backgroundColor: `var(--editorial-${tracker.color})` }}
+                                  />
+                                  <div>
+                                    <div className="font-medium text-editorial-dark">{tracker.name}</div>
+                                    <div className="text-[10px] text-editorial-dark/55 font-serif italic mt-0.5">
+                                      {cat?.name || 'Uncategorized'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Metric Type */}
+                              <td className="py-4 px-4 text-center">
+                                <span className="inline-block text-[10px] font-mono text-editorial-dark/60 bg-editorial-dark/5 px-2 py-0.5 border border-editorial-dark/10 capitalize rounded-none">
+                                  {tracker.type}
+                                </span>
+                              </td>
+
+                              {/* Total Logs */}
+                              <td className="py-4 px-4 text-right font-mono font-medium">
+                                {tracker.totalLogs}
+                              </td>
+
+                              {/* Daily Avg Value */}
+                              <td className="py-4 px-4 text-right font-mono font-bold">
+                                {isBoolean ? (
+                                  <span>{tracker.averageValue}% completion</span>
+                                ) : isRating ? (
+                                  <span>{tracker.averageValue} / 5</span>
+                                ) : (
+                                  <span>{tracker.averageValue} <span className="text-[10px] font-normal text-editorial-dark/55">{tracker.unit || ''}</span></span>
+                                )}
+                              </td>
+
+                              {/* Logging Consistency Days & Badge */}
+                              <td className="py-4 px-4">
+                                <div className="flex flex-col items-center justify-center gap-1">
+                                  <span className="font-mono font-medium text-[11px]">
+                                    {tracker.loggedDaysCount} / {monthlyOverviewStats.totalDays} days
+                                  </span>
+                                  <span className={`text-[9px] font-mono px-1.5 py-0.5 border ${consistencyColor}`}>
+                                    {consistencyStatus}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Streak */}
+                              <td className="py-4 px-4 text-center">
+                                <div className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-editorial-orange bg-editorial-orange-light border border-editorial-orange/20 px-2 py-0.5">
+                                  <Flame size={11} className="fill-editorial-orange/15" />
+                                  <span>{tracker.longestStreak}d max</span>
+                                </div>
+                              </td>
+
+                              {/* Goal rate */}
+                              <td className="py-4 px-6 text-right">
+                                {tracker.goalSuccessRate !== null ? (
+                                  <div className="flex flex-col items-end gap-1">
+                                    <span className="font-mono font-bold text-editorial-accent">
+                                      {tracker.goalSuccessRate}% success
+                                    </span>
+                                    <div className="w-24 bg-editorial-dark/10 h-1">
+                                      <div 
+                                        className="h-full" 
+                                        style={{ 
+                                          width: `${tracker.goalSuccessRate}%`,
+                                          backgroundColor: `var(--editorial-${tracker.color})`
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] font-serif italic text-editorial-dark/40">— No Goal Set</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="py-12 text-center bg-editorial-bg border border-editorial-dark/15">
+              <p className="text-sm font-serif italic text-editorial-dark/60">
+                Please select a month to view statistics.
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         /* Weekly Habit Heatmap Grid View */
