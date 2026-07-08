@@ -303,7 +303,21 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
                 <Minus size={16} />
               </button>
               <div className="text-center flex-1">
-                <span className="text-2xl font-mono font-medium text-editorial-dark block leading-none">{currentValue}</span>
+                <div className="flex items-center justify-center gap-1.5">
+                  <span className="text-2xl font-mono font-medium text-editorial-dark block leading-none">{currentValue}</span>
+                  {trendData && trendData.trend !== 'equal' && (
+                    <span 
+                      className={`inline-flex items-center justify-center cursor-help`}
+                      title={`Yesterday: ${trendData.prevValue} | Change: ${trendData.diff > 0 ? '+' : ''}${Math.round(trendData.diff * 100) / 100}`}
+                    >
+                      {trendData.trend === 'up' ? (
+                        <ArrowUp size={16} className="stroke-[3px] text-emerald-600 animate-bounce" />
+                      ) : (
+                        <ArrowDown size={16} className="stroke-[3px] text-rose-600 animate-bounce" />
+                      )}
+                    </span>
+                  )}
+                </div>
                 {tracker.unit && (
                   <span className="text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest block mt-1">{tracker.unit}</span>
                 )}
@@ -361,8 +375,21 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
               </button>
             </form>
             {currentValue > 0 && (
-              <span className="text-xs text-editorial-dark/60 mt-1 font-sans">
-                Current: <strong className="text-editorial-dark font-mono font-semibold">{currentValue} {tracker.unit}</strong>
+              <span className="text-xs text-editorial-dark/60 mt-1 font-sans flex items-center justify-center gap-1.5">
+                <span>Current:</span>
+                <strong className="text-editorial-dark font-mono font-semibold">{currentValue} {tracker.unit}</strong>
+                {trendData && trendData.trend !== 'equal' && (
+                  <span 
+                    className="inline-flex items-center cursor-help"
+                    title={`Yesterday: ${trendData.prevValue} ${tracker.unit} | Change: ${trendData.diff > 0 ? '+' : ''}${Math.round(trendData.diff * 100) / 100}`}
+                  >
+                    {trendData.trend === 'up' ? (
+                      <ArrowUp size={13} className="stroke-[3px] text-emerald-600" />
+                    ) : (
+                      <ArrowDown size={13} className="stroke-[3px] text-rose-600" />
+                    )}
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -370,7 +397,7 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
 
         {/* BOOLEAN WIDGET */}
         {tracker.type === 'boolean' && (
-          <div className="w-full flex justify-center py-2">
+          <div className="w-full flex flex-col items-center gap-2 py-2">
             <button
               type="button"
               onClick={handleBooleanToggle}
@@ -392,6 +419,20 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
                 </>
               )}
             </button>
+            {trendData && trendData.trend !== 'equal' && (
+              <span className="text-[10px] text-editorial-dark/50 font-mono flex items-center gap-1 mt-1">
+                <span>Trend:</span>
+                {trendData.trend === 'up' ? (
+                  <span className="text-emerald-600 font-semibold flex items-center gap-0.5 cursor-help" title="Completed today but not yesterday">
+                    <ArrowUp size={11} className="stroke-[2.5px]" /> Improved
+                  </span>
+                ) : (
+                  <span className="text-rose-600 font-semibold flex items-center gap-0.5 cursor-help" title="Completed yesterday but not today">
+                    <ArrowDown size={11} className="stroke-[2.5px]" /> Declined
+                  </span>
+                )}
+              </span>
+            )}
           </div>
         )}
 
@@ -425,8 +466,21 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
               })}
             </div>
             {currentValue > 0 && (
-              <span className="text-xs text-editorial-dark/60 mt-2 font-mono">
-                Today's rating: <strong className="text-editorial-dark font-semibold">{currentValue}/5</strong>
+              <span className="text-xs text-editorial-dark/60 mt-2 font-mono flex items-center justify-center gap-1.5">
+                <span>Today's rating:</span>
+                <strong className="text-editorial-dark font-semibold">{currentValue}/5</strong>
+                {trendData && trendData.trend !== 'equal' && (
+                  <span 
+                    className="inline-flex items-center cursor-help"
+                    title={`Yesterday's rating: ${trendData.prevValue}/5 | Change: ${trendData.diff > 0 ? '+' : ''}${Math.round(trendData.diff * 100) / 100}`}
+                  >
+                    {trendData.trend === 'up' ? (
+                      <ArrowUp size={13} className="stroke-[3px] text-emerald-600" />
+                    ) : (
+                      <ArrowDown size={13} className="stroke-[3px] text-rose-600" />
+                    )}
+                  </span>
+                )}
               </span>
             )}
           </div>
