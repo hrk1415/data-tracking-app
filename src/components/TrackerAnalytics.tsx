@@ -81,6 +81,19 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
+  // Determine duration of currently selected period in days
+  const periodDays = useMemo(() => {
+    if (timeMode !== 'custom') {
+      return parseInt(timeMode);
+    }
+    if (customStartDate && customEndDate) {
+      const start = new Date(customStartDate + 'T00:00:00');
+      const end = new Date(customEndDate + 'T00:00:00');
+      return Math.max(1, Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+    }
+    return 7;
+  }, [timeMode, customStartDate, customEndDate]);
+
   const weeklyTrackers = useMemo(() => {
     if (selectedCategory === 'all') return trackers;
     return trackers.filter(t => t.category === selectedCategory);
@@ -263,20 +276,20 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     });
   }, [trackers, logs]);
 
-  // Weekly Summary comparison calculations (past 7 days vs previous 7 days)
+  // Weekly Summary comparison calculations (past periodDays days vs previous periodDays days)
   const weeklySummaryStats = useMemo(() => {
     const today = new Date();
     
-    // Get past 7 days (including today)
+    // Get past periodDays days (including today)
     const last7Days: string[] = [];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < periodDays; i++) {
       const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
       last7Days.push(d.toISOString().split('T')[0]);
     }
 
-    // Get previous 7 days (days 8-14)
+    // Get previous periodDays days
     const prev7Days: string[] = [];
-    for (let i = 7; i < 14; i++) {
+    for (let i = periodDays; i < 2 * periodDays; i++) {
       const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
       prev7Days.push(d.toISOString().split('T')[0]);
     }
@@ -296,7 +309,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       percentChange = 100;
     }
 
-    // Group tracker breakdowns for last 7 vs prev 7 days
+    // Group tracker breakdowns for last period vs prev period
     const trackerBreakdown = weeklyTrackers.map(tracker => {
       const tLast7 = last7Logs.filter(l => l.trackerId === tracker.id).length;
       const tPrev7 = prev7Logs.filter(l => l.trackerId === tracker.id).length;
@@ -316,7 +329,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       percentChange,
       trackerBreakdown
     };
-  }, [weeklyTrackers, logs]);
+  }, [weeklyTrackers, logs, periodDays]);
 
   // Memoize heatmap data for all trackers
   const trackerHeatmaps = useMemo(() => {
@@ -458,20 +471,20 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     }>);
   }, [trackers, logs]);
 
-  // Weekly Category Trend Analysis calculations
+  // Category Trend Analysis calculations based on selected timeframe
   const categoryTrends = useMemo(() => {
     const today = new Date();
     
-    // Last 7 days
+    // Last periodDays days
     const last7Days: string[] = [];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < periodDays; i++) {
       const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
       last7Days.push(d.toISOString().split('T')[0]);
     }
 
-    // Previous 7 days (days 8-14)
+    // Previous periodDays days
     const prev7Days: string[] = [];
-    for (let i = 7; i < 14; i++) {
+    for (let i = periodDays; i < 2 * periodDays; i++) {
       const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
       prev7Days.push(d.toISOString().split('T')[0]);
     }
@@ -553,7 +566,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
         goalRateDiff,
       };
     });
-  }, [trackers, logs]);
+  }, [trackers, logs, periodDays]);
 
   // Calculations for KPI Cards
   const stats = useMemo(() => {
@@ -983,16 +996,10 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     doc.save(`Metrics_Report_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  // Calculate 7-day data for all trackers to use in "Weekly Trends" view
+  // Calculate dynamic data for all trackers to use in "Weekly Trends" view based on selected timeframe
   const last7DaysData = useMemo(() => {
-    const list: string[] = [];
-    const today = new Date();
+    const list = [...dateRangeList];
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
-      list.push(d.toISOString().split('T')[0]);
-    }
 
     return list.map(dateStr => {
       const parts = dateStr.split('-');
@@ -1017,7 +1024,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
 
       return dataPoint;
     });
-  }, [weeklyTrackers, logs]);
+  }, [weeklyTrackers, logs, dateRangeList]);
 
   // Render notes stream
   const notesStream = useMemo(() => {
@@ -1059,7 +1066,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
             <Info size={20} className="text-editorial-accent/50 stroke-[1.5px] mb-2" />
             <p className="text-xs font-serif font-medium text-editorial-dark/80">No Trackers Available</p>
             <p className="text-[10px] text-editorial-dark/55 max-w-[200px] leading-relaxed mt-1">
-              Add a metric with this tracker type to visualize its 7-day progress!
+              Add a metric with this tracker type to visualize its progress over the selected timeframe!
             </p>
           </div>
         </div>
@@ -1183,7 +1190,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                 : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
             }`}
           >
-            Weekly Trends (7D)
+            {timeMode === '7' ? 'Weekly Trends (7D)' : timeMode === '30' ? 'Monthly Trends (30D)' : timeMode === '90' ? 'Quarterly Trends (90D)' : 'Custom Trends'}
           </button>
           <button
             type="button"
@@ -1209,6 +1216,76 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
             <Download size={14} className="stroke-[1.5px] text-editorial-accent" />
             <span>Download PDF Report</span>
           </button>
+        </div>
+      </div>
+
+      {/* Global Filter Bar */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-editorial-bg p-4 border border-editorial-dark/15 rounded-none shadow-xs">
+        {/* Timeframe Dropdown Filter */}
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider shrink-0">Timeframe:</span>
+          <div className="relative">
+            <select
+              id="analytics-timeframe-select"
+              value={timeMode}
+              onChange={(e) => setTimeMode(e.target.value as TimeMode)}
+              className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-1.5 text-xs font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
+            >
+              <option value="7">Last 7 Days</option>
+              <option value="30">Last 30 Days</option>
+              <option value="90">Last 90 Days</option>
+              <option value="custom">Custom Range</option>
+            </select>
+            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={13} />
+          </div>
+
+          {/* Custom Date Inputs */}
+          {timeMode === 'custom' && (
+            <div className="flex flex-wrap items-center gap-2 border border-editorial-dark/15 bg-editorial-bg/50 p-1">
+              <div className="flex items-center gap-1.5 px-1">
+                <span className="text-[9px] font-mono font-medium text-editorial-dark/40 uppercase">From</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  max={customEndDate || undefined}
+                  className="rounded-none border border-editorial-dark/15 bg-editorial-bg px-2 py-0.5 text-xs font-mono text-editorial-dark focus:border-editorial-accent focus:outline-hidden"
+                />
+              </div>
+              <span className="text-editorial-dark/30 text-[10px] font-mono">—</span>
+              <div className="flex items-center gap-1.5 px-1">
+                <span className="text-[9px] font-mono font-medium text-editorial-dark/40 uppercase">To</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  min={customStartDate || undefined}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="rounded-none border border-editorial-dark/15 bg-editorial-bg px-2 py-0.5 text-xs font-mono text-editorial-dark focus:border-editorial-accent focus:outline-hidden"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Category Filter */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider shrink-0">Category:</span>
+          <div className="relative">
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-1.5 text-xs font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
+            >
+              <option value="all">All Categories</option>
+              {CATEGORIES.map(cat => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={13} />
+          </div>
         </div>
       </div>
 
@@ -1356,86 +1433,29 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       </div>
 
       {/* Selector and Filter Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-editorial-bg p-5 rounded-none border border-editorial-dark/15">
+      <div className="bg-editorial-bg p-5 rounded-none border border-editorial-dark/15">
         {/* Tracker Selection Dropdown */}
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider shrink-0">Metrics for:</span>
-          <div className="relative">
-            <select
-              value={selectedTrackerId}
-              onChange={(e) => setSelectedTrackerId(e.target.value)}
-              className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-2 text-sm font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
-            >
-              {trackers.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={15} />
-          </div>
-        </div>
-
-        {/* Timeframe Range Picker */}
-        <div className="flex flex-col gap-2.5 sm:items-end">
-          <span className="text-[10px] font-mono font-medium text-editorial-dark/50 uppercase tracking-widest">Time Period</span>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex rounded-none bg-editorial-dark/5 p-1 border border-editorial-dark/10">
-              {(['7', '30', '90'] as const).map((range) => (
-                <button
-                  key={range}
-                  type="button"
-                  onClick={() => setTimeMode(range)}
-                  className={`rounded-none px-3.5 py-1.5 text-xs font-mono font-medium transition-all cursor-pointer ${
-                    timeMode === range
-                      ? 'bg-editorial-accent text-editorial-bg'
-                      : 'text-editorial-dark/60 hover:text-editorial-dark'
-                  }`}
-                >
-                  {range}D
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setTimeMode('custom')}
-                className={`rounded-none px-3.5 py-1.5 text-xs font-mono font-medium transition-all cursor-pointer ${
-                  timeMode === 'custom'
-                    ? 'bg-editorial-accent text-editorial-bg'
-                    : 'text-editorial-dark/60 hover:text-editorial-dark'
-                }`}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider shrink-0">Metrics for:</span>
+            <div className="relative">
+              <select
+                value={selectedTrackerId}
+                onChange={(e) => setSelectedTrackerId(e.target.value)}
+                className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-2 text-sm font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
               >
-                Custom
-              </button>
+                {weeklyTrackers.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={15} />
             </div>
-
-            {/* Custom inputs */}
-            {timeMode === 'custom' && (
-              <div className="flex items-center gap-2 border border-editorial-dark/15 bg-editorial-bg/50 p-1">
-                <div className="flex items-center gap-1.5 px-1">
-                  <span className="text-[9px] font-mono font-medium text-editorial-dark/40 uppercase">From</span>
-                  <input
-                    type="date"
-                    value={customStartDate}
-                    onChange={(e) => setCustomStartDate(e.target.value)}
-                    max={customEndDate || undefined}
-                    className="rounded-none border border-editorial-dark/15 bg-editorial-bg px-2 py-0.5 text-xs font-mono text-editorial-dark focus:border-editorial-accent focus:outline-hidden"
-                  />
-                </div>
-                <span className="text-editorial-dark/30 text-[10px] font-mono">—</span>
-                <div className="flex items-center gap-1.5 px-1">
-                  <span className="text-[9px] font-mono font-medium text-editorial-dark/40 uppercase">To</span>
-                  <input
-                    type="date"
-                    value={customEndDate}
-                    onChange={(e) => setCustomEndDate(e.target.value)}
-                    min={customStartDate || undefined}
-                    max={new Date().toISOString().split('T')[0]}
-                    className="rounded-none border border-editorial-dark/15 bg-editorial-bg px-2 py-0.5 text-xs font-mono text-editorial-dark focus:border-editorial-accent focus:outline-hidden"
-                  />
-                </div>
-              </div>
-            )}
           </div>
+          <span className="text-xs font-sans italic text-editorial-dark/50">
+            Currently analyzing data across the active {periodDays}-day timeframe
+          </span>
         </div>
       </div>
 
@@ -1843,31 +1863,11 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
               </div>
               <div>
                 <h3 className="font-serif font-medium text-lg text-editorial-dark">
-                  Weekly Trends (7-Day Progress)
+                  {timeMode === '7' ? 'Weekly' : timeMode === '30' ? 'Monthly' : timeMode === '90' ? 'Quarterly' : 'Custom'} Trends ({periodDays}-Day Progress)
                 </h3>
                 <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
-                  Compare multi-tracker progress side-by-side grouped by metric type
+                  Compare multi-tracker progress side-by-side grouped by metric type for the past {periodDays} days
                 </p>
-              </div>
-            </div>
-
-            {/* Category Filter Dropdown */}
-            <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
-              <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider shrink-0">Filter Category:</span>
-              <div className="relative">
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-2 text-xs font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
-                >
-                  <option value="all">All Categories</option>
-                  {CATEGORIES.map(cat => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={13} />
               </div>
             </div>
           </div>
@@ -1878,13 +1878,13 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
             <div className="md:col-span-1 flex flex-col justify-between border-b md:border-b-0 md:border-r border-editorial-dark/10 pb-6 md:pb-0 md:pr-6 space-y-4">
               <div>
                 <span className="inline-flex items-center text-[10px] font-mono font-medium text-editorial-accent bg-editorial-accent-light border border-editorial-accent/25 px-2 py-0.5 rounded-none uppercase tracking-wider mb-2">
-                  7-Day Aggregated Volume
+                  {periodDays}-Day Aggregated Volume
                 </span>
                 <h4 className="font-serif font-medium text-xl text-editorial-dark leading-tight">
                   Log Entry Activity
                 </h4>
                 <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">
-                  Comparing all logged tracker entries over the past two weeks
+                  Comparing all logged tracker entries for the current period against the prior period of the same length
                 </p>
               </div>
 
@@ -1913,7 +1913,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                     </div>
                   )}
                   <span className="text-[11px] text-editorial-dark/55 font-sans">
-                    vs. {weeklySummaryStats.prev7Count} in previous 7D
+                    vs. {weeklySummaryStats.prev7Count} in previous {periodDays}D
                   </span>
                 </div>
               </div>
@@ -1930,7 +1930,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                   Log Volume Breakdown by Tracker
                 </h5>
                 <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
-                  Log frequency per tracker (last 7 days vs previous 7 days)
+                  Log frequency per tracker (last {periodDays} days vs previous {periodDays} days)
                 </p>
               </div>
 
@@ -1956,7 +1956,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                       <div className="flex items-center gap-3 shrink-0">
                         <div className="text-right font-mono">
                           <div className="text-xs font-medium text-editorial-dark">
-                            {last7} <span className="text-[10px] text-editorial-dark/40">/ 7d</span>
+                            {last7} <span className="text-[10px] text-editorial-dark/40">/ {periodDays}d</span>
                           </div>
                           <div className="text-[9px] text-editorial-dark/40">
                             {prev7} prev
@@ -1990,13 +1990,13 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-5">
             <div>
               <h4 className="font-serif font-medium text-lg text-editorial-dark flex items-center gap-2">
-                Weekly Category Trend Analysis
+                {timeMode === '7' ? 'Weekly' : timeMode === '30' ? 'Monthly' : timeMode === '90' ? 'Quarterly' : 'Custom'} Category Trend Analysis
                 <span className="inline-flex items-center text-[9px] font-mono text-editorial-accent bg-editorial-accent-light border border-editorial-accent/25 px-2 py-0.5 rounded-none">
-                  Last 7 Days vs Prior 7 Days
+                  Last {periodDays} Days vs Prior {periodDays} Days
                 </span>
               </h4>
               <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">
-                Calculates percentage growth and target goal progress trends for each tracker category compared to the prior week
+                Calculates percentage growth and target goal progress trends for each tracker category compared to the prior period of the same length
               </p>
             </div>
 
@@ -2057,7 +2057,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                       </div>
 
                       <div className="text-[11px] font-sans text-editorial-dark/65 flex justify-between">
-                        <span>Last 7 Days: <strong className="font-mono text-editorial-dark">{last7Count}</strong> logs</span>
+                        <span>Selected Period: <strong className="font-mono text-editorial-dark">{last7Count}</strong> logs</span>
                         <span className="text-editorial-dark/40">vs {prev7Count} prior</span>
                       </div>
                     </div>
@@ -2097,10 +2097,10 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                             />
                           </div>
                           <div className="flex justify-between text-[9px] font-mono text-editorial-dark/40">
-                            <span>Prior week: {prev7GoalRate}% success</span>
+                            <span>Prior period: {prev7GoalRate}% success</span>
                             {goalRateDiff !== null && (
                               <span>
-                                {goalRateDiff > 0 ? 'Improving weekly trend' : goalRateDiff < 0 ? 'Declining weekly trend' : 'Consistent performance'}
+                                {goalRateDiff > 0 ? 'Improving trend' : goalRateDiff < 0 ? 'Declining trend' : 'Consistent performance'}
                               </span>
                             )}
                           </div>
