@@ -65,7 +65,7 @@ interface Insight {
 type TimeMode = '7' | '30' | '90' | 'custom';
 
 export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
-  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly'>('individual');
+  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly' | 'heatmap'>('individual');
   const [selectedTrackerId, setSelectedTrackerId] = useState<string>(
     trackers.length > 0 ? trackers[0].id : ''
   );
@@ -317,6 +317,146 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       trackerBreakdown
     };
   }, [weeklyTrackers, logs]);
+
+  // Memoize heatmap data for all trackers
+  const trackerHeatmaps = useMemo(() => {
+    const today = new Date();
+    
+    // Find Monday of the current week
+    const currentDay = today.getDay(); // 0 = Sun, 1 = Mon, ...
+    const currentWeekdayIndex = currentDay === 0 ? 6 : currentDay - 1;
+    const currentMonday = new Date(today);
+    currentMonday.setDate(today.getDate() - currentWeekdayIndex);
+    
+    // Find Monday of Week 1 (3 weeks ago)
+    const startMonday = new Date(currentMonday);
+    startMonday.setDate(currentMonday.getDate() - 21);
+
+    const weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    return trackers.reduce((acc, tracker) => {
+      // Filter logs for this tracker
+      const trackerLogs = logs.filter(l => l.trackerId === tracker.id);
+
+      // Collect daily sums and counts for relative scaling
+      const dailySums: Record<string, number> = {};
+      const dailyCounts: Record<string, number> = {};
+      
+      trackerLogs.forEach(log => {
+        dailySums[log.date] = (dailySums[log.date] || 0) + log.value;
+        dailyCounts[log.date] = (dailyCounts[log.date] || 0) + 1;
+      });
+
+      const allValues = Object.values(dailySums);
+      const maxDayValue = allValues.length > 0 ? Math.max(...allValues) : 0;
+
+      const grid: {
+        dateStr: string;
+        dayName: string;
+        weekName: string;
+        valueSum: number;
+        logsCount: number;
+        intensity: 0 | 1 | 2 | 3 | 4;
+        isFuture: boolean;
+        isToday: boolean;
+        logs: LogEntry[];
+      }[][] = [];
+
+      for (let r = 0; r < 7; r++) {
+        const rowCells = [];
+        for (let c = 0; c < 4; c++) {
+          // Calculate the specific date for this cell
+          const cellDate = new Date(startMonday);
+          cellDate.setDate(startMonday.getDate() + c * 7 + r);
+          
+          const dateStr = cellDate.toISOString().split('T')[0];
+          const isFuture = cellDate.getTime() > today.getTime();
+          const isToday = dateStr === today.toISOString().split('T')[0];
+
+          const dayLogs = trackerLogs.filter(l => l.date === dateStr);
+          const logsCount = dayLogs.length;
+          
+          let valueSum = 0;
+          if (tracker.type === 'counter') {
+            valueSum = dayLogs.reduce((sum, l) => sum + l.value, 0);
+          } else if (dayLogs.length > 0) {
+            // For rating/numeric, take the latest logged value on that day
+            valueSum = dayLogs[dayLogs.length - 1].value;
+          }
+
+          // Compute intensity (0 to 4)
+          let intensity: 0 | 1 | 2 | 3 | 4 = 0;
+          if (logsCount > 0 && !isFuture) {
+            if (tracker.type === 'boolean') {
+              const hasTrue = dayLogs.some(l => l.value > 0);
+              intensity = hasTrue ? 4 : 2;
+            } else if (tracker.type === 'rating') {
+              const ratingVal = valueSum;
+              if (ratingVal <= 1) intensity = 1;
+              else if (ratingVal <= 2) intensity = 2;
+              else if (ratingVal <= 4) intensity = 3;
+              else intensity = 4;
+            } else {
+              if (maxDayValue === 0) {
+                intensity = 2;
+              } else {
+                const ratio = valueSum / maxDayValue;
+                if (ratio <= 0.25) intensity = 1;
+                else if (ratio <= 0.5) intensity = 2;
+                else if (ratio <= 0.75) intensity = 3;
+                else intensity = 4;
+              }
+            }
+          }
+
+          rowCells.push({
+            dateStr,
+            dayName: weekdayNames[r],
+            weekName: `W${c + 1}`,
+            valueSum,
+            logsCount,
+            intensity,
+            isFuture,
+            isToday,
+            logs: dayLogs
+          });
+        }
+        grid.push(rowCells);
+      }
+
+      // Filter month logs
+      const monthLogs = trackerLogs.filter(l => {
+        const d = new Date(l.date);
+        return d >= startMonday && d <= today;
+      });
+
+      const uniqueLoggedDates = new Set(monthLogs.map(l => l.date));
+
+      acc[tracker.id] = {
+        grid,
+        maxDayValue,
+        totalLogsInMonth: monthLogs.length,
+        activeDaysCount: uniqueLoggedDates.size
+      };
+
+      return acc;
+    }, {} as Record<string, {
+      grid: {
+        dateStr: string;
+        dayName: string;
+        weekName: string;
+        valueSum: number;
+        logsCount: number;
+        intensity: 0 | 1 | 2 | 3 | 4;
+        isFuture: boolean;
+        isToday: boolean;
+        logs: LogEntry[];
+      }[][];
+      maxDayValue: number;
+      totalLogsInMonth: number;
+      activeDaysCount: number;
+    }>);
+  }, [trackers, logs]);
 
   // Weekly Category Trend Analysis calculations
   const categoryTrends = useMemo(() => {
@@ -1045,6 +1185,18 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           >
             Weekly Trends (7D)
           </button>
+          <button
+            type="button"
+            id="tab-heatmap-view"
+            onClick={() => setAnalyticsView('heatmap')}
+            className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
+              analyticsView === 'heatmap'
+                ? 'border-editorial-accent text-editorial-accent'
+                : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
+            }`}
+          >
+            Weekly Habit Heatmap
+          </button>
         </div>
 
         <div className="pb-2.5 sm:pb-0 flex shrink-0">
@@ -1527,8 +1679,161 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           </div>
         </div>
       </div>
+
+      {/* Individual Tracker Heatmap Section */}
+      <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-4">
+        <div className="flex items-center gap-2.5 border-b border-editorial-dark/10 pb-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-editorial-accent-light border border-editorial-accent/20 text-editorial-accent">
+            <Calendar size={20} className="stroke-[1.5px]" />
+          </div>
+          <div>
+            <h3 className="font-serif font-medium text-lg text-editorial-dark">
+              Past Month Consistency (7x4 Habit Grid)
+            </h3>
+            <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
+              Visualize completion frequency and intensity for <strong>{selectedTracker.name}</strong> over the past 28 days
+            </p>
+          </div>
+        </div>
+
+        {/* Heatmap implementation for single tracker */}
+        {(() => {
+          const heatmap = trackerHeatmaps[selectedTracker.id];
+          if (!heatmap) return null;
+          const { grid, totalLogsInMonth, activeDaysCount } = heatmap;
+          const consistencyRate = Math.round((activeDaysCount / 28) * 100);
+
+          return (
+            <div className="flex flex-col md:flex-row items-center gap-8 justify-between p-4 bg-editorial-dark/[0.01]">
+              <div className="flex gap-4 items-center">
+                {/* Weekday labels */}
+                <div className="flex flex-col justify-between text-[10px] font-mono text-editorial-dark/45 py-2 select-none h-44">
+                  <span>M</span>
+                  <span>T</span>
+                  <span>W</span>
+                  <span>T</span>
+                  <span>F</span>
+                  <span>S</span>
+                  <span>S</span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
+                  {Array.from({ length: 4 }).map((_, colIdx) => {
+                    const weekLabels = ["3W Ago", "2W Ago", "Last Wk", "This Wk"];
+                    return (
+                      <div key={colIdx} className="flex flex-col gap-2">
+                        <span className="text-[9px] font-mono text-editorial-dark/40 text-center uppercase tracking-wider mb-1">
+                          {weekLabels[colIdx]}
+                        </span>
+                        {Array.from({ length: 7 }).map((_, rowIdx) => {
+                          const cell = grid[rowIdx][colIdx];
+                          if (!cell) return null;
+
+                          let cellStyle: React.CSSProperties = {};
+                          let cellClasses = "w-8 h-8 transition-all border cursor-help";
+
+                          if (cell.isFuture) {
+                            cellClasses += " bg-editorial-dark/[0.01] border-editorial-dark/5 opacity-20 cursor-not-allowed";
+                          } else if (cell.intensity === 0) {
+                            cellClasses += " bg-editorial-dark/[0.04] border-editorial-dark/10 hover:border-editorial-dark/30";
+                          } else {
+                            cellClasses += " border-editorial-dark/15 hover:scale-105 hover:shadow-xs";
+                            let opacity = 0.2;
+                            if (cell.intensity === 2) opacity = 0.45;
+                            if (cell.intensity === 3) opacity = 0.75;
+                            if (cell.intensity === 4) opacity = 1.0;
+
+                            cellStyle = {
+                              backgroundColor: `var(--editorial-${selectedTracker.color})`,
+                              opacity: opacity,
+                            };
+                          }
+
+                          if (cell.isToday) {
+                            cellClasses += " ring-2 ring-editorial-accent ring-offset-2";
+                          }
+
+                          let tooltipMsg = `${cell.dayName}, ${new Date(cell.dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                          if (cell.isFuture) {
+                            tooltipMsg += " (Future)";
+                          } else if (cell.logsCount === 0) {
+                            tooltipMsg += " (No logs)";
+                          } else {
+                            tooltipMsg += `: Logged ${cell.logsCount} time(s). `;
+                            if (selectedTracker.type === 'counter') {
+                              tooltipMsg += `Total: ${cell.valueSum} ${selectedTracker.unit || ''}`;
+                            } else if (selectedTracker.type === 'rating') {
+                              tooltipMsg += `Rating: ${cell.valueSum}/5`;
+                            } else if (selectedTracker.type === 'boolean') {
+                              tooltipMsg += cell.valueSum > 0 ? "Completed" : "Logged";
+                            } else {
+                              tooltipMsg += `Value: ${cell.valueSum} ${selectedTracker.unit || ''}`;
+                            }
+                          }
+
+                          return (
+                            <div
+                              key={rowIdx}
+                              className={cellClasses}
+                              style={cellStyle}
+                              title={tooltipMsg}
+                            />
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Sidebar stats card */}
+              <div className="flex-1 max-w-sm w-full border border-editorial-dark/10 bg-editorial-bg p-5 flex flex-col justify-between space-y-4">
+                <div>
+                  <h4 className="font-serif font-medium text-base text-editorial-dark mb-1">Consistency Statistics</h4>
+                  <p className="text-xs font-sans italic text-editorial-dark/60">Aggregated logs from the past 28 days</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-editorial-dark/60 font-sans">Active Days</span>
+                    <span className="font-mono font-bold text-editorial-dark">{activeDaysCount} / 28 days</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-editorial-dark/60 font-sans">Consistency Rate</span>
+                    <span className="font-mono font-bold text-editorial-dark">{consistencyRate}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-editorial-dark/60 font-sans">Total Logs Saved</span>
+                    <span className="font-mono font-bold text-editorial-dark">{totalLogsInMonth} logs</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="w-full bg-editorial-dark/10 h-1.5 rounded-none overflow-hidden">
+                    <div 
+                      className={`h-full ${colorStyles.bg}`} 
+                      style={{ width: `${consistencyRate}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] font-mono text-editorial-dark/45">
+                    <span>Less</span>
+                    <div className="flex items-center gap-1 select-none">
+                      <span className="w-2 h-2 bg-editorial-dark/[0.04] border border-editorial-dark/10" />
+                      <span className="w-2 h-2" style={{ backgroundColor: `var(--editorial-${selectedTracker.color})`, opacity: 0.2 }} />
+                      <span className="w-2 h-2" style={{ backgroundColor: `var(--editorial-${selectedTracker.color})`, opacity: 0.45 }} />
+                      <span className="w-2 h-2" style={{ backgroundColor: `var(--editorial-${selectedTracker.color})`, opacity: 0.75 }} />
+                      <span className="w-2 h-2" style={{ backgroundColor: `var(--editorial-${selectedTracker.color})`, opacity: 1.0 }} />
+                    </div>
+                    <span>More</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
         </>
-      ) : (
+      ) : analyticsView === 'weekly' ? (
         /* Weekly Trends Grid View */
         <div className="space-y-6">
           <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1838,6 +2143,169 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
               [1, 5],
               [1, 2, 3, 4, 5]
             )}
+          </div>
+        </div>
+      ) : (
+        /* Weekly Habit Heatmap Grid View */
+        <div className="space-y-6">
+          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-editorial-accent-light border border-editorial-accent/20 text-editorial-accent">
+                <Table size={20} className="stroke-[1.5px]" />
+              </div>
+              <div>
+                <h3 className="font-serif font-medium text-lg text-editorial-dark">
+                  Weekly Habit Heatmap
+                </h3>
+                <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
+                  Visualize log frequency and intensity over the past 4 weeks (28 days) for each tracker
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {trackers.map((tracker) => {
+              const heatmap = trackerHeatmaps[tracker.id];
+              if (!heatmap) return null;
+              const { grid, totalLogsInMonth, activeDaysCount } = heatmap;
+              const colorStyles = COLOR_MAP[tracker.color] || COLOR_MAP.emerald;
+              const consistencyRate = Math.round((activeDaysCount / 28) * 100);
+
+              return (
+                <div key={tracker.id} className="bg-editorial-bg p-5 rounded-none border border-editorial-dark/15 flex flex-col justify-between hover:border-editorial-dark/30 transition-all space-y-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between gap-2 border-b border-editorial-dark/5 pb-3">
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-none text-white ${colorStyles.bg} border border-editorial-dark/10`}>
+                        <LucideIcon name={tracker.icon} size={15} />
+                      </div>
+                      <div>
+                        <h4 className="font-serif font-semibold text-sm text-editorial-dark truncate leading-tight">
+                          {tracker.name}
+                        </h4>
+                        <span className="text-[10px] font-mono text-editorial-dark/45 uppercase tracking-wider">
+                          {CATEGORIES.find(c => c.id === tracker.category)?.name || tracker.category}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Heatmap Grid Component */}
+                  <div className="flex flex-col items-center justify-center py-2">
+                    <div className="flex gap-2">
+                      {/* Weekday Labels (Mon, Tue, Wed, Thu, Fri, Sat, Sun) */}
+                      <div className="flex flex-col justify-between text-[9px] font-mono text-editorial-dark/45 py-1 select-none pr-1">
+                        <span>M</span>
+                        <span>T</span>
+                        <span>W</span>
+                        <span>T</span>
+                        <span>F</span>
+                        <span>S</span>
+                        <span>S</span>
+                      </div>
+
+                      {/* The Grid itself: 4 columns of 7 cells */}
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {Array.from({ length: 4 }).map((_, colIdx) => {
+                          const weekLabels = ["3W Ago", "2W Ago", "Last Wk", "This Wk"];
+                          return (
+                            <div key={colIdx} className="flex flex-col gap-1.5">
+                              {/* Week Header Label */}
+                              <span className="text-[8px] font-mono text-editorial-dark/40 text-center uppercase tracking-tighter mb-1 h-3 block">
+                                {weekLabels[colIdx]}
+                              </span>
+                              
+                              {Array.from({ length: 7 }).map((_, rowIdx) => {
+                                const cell = grid[rowIdx][colIdx];
+                                if (!cell) return null;
+
+                                let cellStyle: React.CSSProperties = {};
+                                let cellClasses = "w-6 h-6 transition-all border cursor-help";
+
+                                if (cell.isFuture) {
+                                  cellClasses += " bg-editorial-dark/[0.01] border-editorial-dark/5 opacity-20 cursor-not-allowed";
+                                } else if (cell.intensity === 0) {
+                                  cellClasses += " bg-editorial-dark/[0.04] border-editorial-dark/10 hover:border-editorial-dark/30";
+                                } else {
+                                  cellClasses += " border-editorial-dark/15 hover:scale-105 hover:shadow-xs";
+                                  let opacity = 0.2;
+                                  if (cell.intensity === 2) opacity = 0.45;
+                                  if (cell.intensity === 3) opacity = 0.75;
+                                  if (cell.intensity === 4) opacity = 1.0;
+
+                                  cellStyle = {
+                                    backgroundColor: `var(--editorial-${tracker.color})`,
+                                    opacity: opacity,
+                                  };
+                                }
+
+                                if (cell.isToday) {
+                                  cellClasses += " ring-1 ring-editorial-accent ring-offset-1";
+                                }
+
+                                let tooltipMsg = `${cell.dayName}, ${new Date(cell.dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                                if (cell.isFuture) {
+                                  tooltipMsg += " (Future)";
+                                } else if (cell.logsCount === 0) {
+                                  tooltipMsg += " (No logs)";
+                                } else {
+                                  tooltipMsg += `: Logged ${cell.logsCount} time(s). `;
+                                  if (tracker.type === 'counter') {
+                                    tooltipMsg += `Total: ${cell.valueSum} ${tracker.unit || ''}`;
+                                  } else if (tracker.type === 'rating') {
+                                    tooltipMsg += `Rating: ${cell.valueSum}/5`;
+                                  } else if (tracker.type === 'boolean') {
+                                    tooltipMsg += cell.valueSum > 0 ? "Completed" : "Logged";
+                                  } else {
+                                    tooltipMsg += `Value: ${cell.valueSum} ${tracker.unit || ''}`;
+                                  }
+                                }
+
+                                return (
+                                  <div
+                                    key={rowIdx}
+                                    className={cellClasses}
+                                    style={cellStyle}
+                                    title={tooltipMsg}
+                                  />
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Stats for Tracker Heatmap */}
+                  <div className="pt-3.5 border-t border-editorial-dark/5 bg-editorial-dark/[0.01] -mx-5 -mb-5 p-4 space-y-2 mt-auto">
+                    <div className="flex items-center justify-between text-xs font-sans">
+                      <span className="text-editorial-dark/60 italic">Consistency (28D)</span>
+                      <span className="font-mono font-bold text-editorial-dark">{consistencyRate}%</span>
+                    </div>
+                    <div className="w-full bg-editorial-dark/10 h-1 rounded-none overflow-hidden">
+                      <div 
+                        className={`h-full ${colorStyles.bg}`} 
+                        style={{ width: `${consistencyRate}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-baseline text-[9px] font-mono text-editorial-dark/45">
+                      <span>{totalLogsInMonth} logs in month</span>
+                      <div className="flex items-center gap-1 select-none">
+                        <span>Less</span>
+                        <span className="w-1.5 h-1.5 bg-editorial-dark/[0.04] border border-editorial-dark/10" />
+                        <span className="w-1.5 h-1.5" style={{ backgroundColor: `var(--editorial-${tracker.color})`, opacity: 0.2 }} />
+                        <span className="w-1.5 h-1.5" style={{ backgroundColor: `var(--editorial-${tracker.color})`, opacity: 0.45 }} />
+                        <span className="w-1.5 h-1.5" style={{ backgroundColor: `var(--editorial-${tracker.color})`, opacity: 0.75 }} />
+                        <span className="w-1.5 h-1.5" style={{ backgroundColor: `var(--editorial-${tracker.color})`, opacity: 1.0 }} />
+                        <span>More</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
