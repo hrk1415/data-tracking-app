@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import { jsPDF } from 'jspdf';
 import { Tracker, LogEntry, COLOR_MAP, CATEGORIES } from '../types';
 import { LucideIcon } from './LucideIcon';
 import {
@@ -20,7 +21,8 @@ import {
   RefreshCw,
   Lightbulb,
   Activity,
-  Table
+  Table,
+  Download
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -500,6 +502,347 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   const activeColor = selectedTracker ? selectedTracker.color : 'emerald';
   const colorStyles = COLOR_MAP[activeColor] || COLOR_MAP.emerald;
 
+  // Generate and download a printable PDF report of current dashboard and trends
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
+    let y = 20;
+    let pageCount = 2;
+
+    const checkNewPage = (heightNeeded: number) => {
+      if (y + heightNeeded > 275) {
+        doc.addPage();
+        y = 20;
+        // Running Header on new page
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text("Personal Metrics & Trends Report", 15, 12);
+        doc.text(`Page ${pageCount}`, 195, 12, { align: 'right' });
+        doc.setDrawColor(220, 220, 220);
+        doc.line(15, 14, 195, 14);
+        y = 22;
+        pageCount++;
+      }
+    };
+
+    // --- TITLE BLOCK ---
+    doc.setFont("times", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(40, 40, 40);
+    doc.text("PERSONAL METRICS & TRENDS", 15, y);
+    y += 8;
+
+    doc.setFont("times", "italic");
+    doc.setFontSize(11);
+    doc.setTextColor(161, 130, 74);
+    const dateStr = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    doc.text(`Generated on ${dateStr} • Client-Side Ledger & Analytics`, 15, y);
+    y += 5;
+
+    // Divider
+    doc.setDrawColor(161, 130, 74);
+    doc.setLineWidth(0.5);
+    doc.line(15, y, 195, y);
+    y += 10;
+
+    // --- SECTION 1: OVERALL LOGGING VOLUME ---
+    doc.setFont("times", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(40, 40, 40);
+    doc.text("1. Overall Activity & Volume Summary", 15, y);
+    y += 6;
+
+    // Draw a nice warm background box for Overall Summary
+    doc.setFillColor(249, 248, 246);
+    doc.rect(15, y, 180, 28, "F");
+    doc.setDrawColor(230, 225, 215);
+    doc.rect(15, y, 180, 28, "S");
+
+    // Content inside the box
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Total Active Trackers configured:`, 20, y + 8);
+    doc.setFont("courier", "bold");
+    doc.text(`${trackers.length}`, 85, y + 8);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`Total logged entries in database:`, 20, y + 14);
+    doc.setFont("courier", "bold");
+    doc.text(`${logs.length}`, 85, y + 14);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`7-Day Logging volume trends:`, 110, y + 8);
+    doc.setFont("courier", "bold");
+    doc.text(`${weeklySummaryStats.last7Count} logs vs ${weeklySummaryStats.prev7Count} in prior 7D`, 110, y + 14);
+
+    const changeTxt = weeklySummaryStats.diff > 0 
+      ? `+${weeklySummaryStats.percentChange}% growth (Improving)` 
+      : weeklySummaryStats.diff < 0 
+        ? `${weeklySummaryStats.percentChange}% decrease (Declining)` 
+        : `0% change (Stable)`;
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9);
+    doc.setTextColor(110, 110, 110);
+    doc.text(`Relative Growth: ${changeTxt}`, 110, y + 20);
+
+    y += 36;
+
+    // --- SECTION 2: CATEGORY TRENDS TABLE ---
+    checkNewPage(65);
+    doc.setFont("times", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(40, 40, 40);
+    doc.text("2. Weekly Category Trend Analysis (Last 7 Days vs Prior 7 Days)", 15, y);
+    y += 6;
+
+    // Draw Category Trends Table Headers
+    doc.setFillColor(240, 238, 233);
+    doc.rect(15, y, 180, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(60, 60, 60);
+    doc.text("Category", 18, y + 5.5);
+    doc.text("Active Trackers", 55, y + 5.5);
+    doc.text("Logs (7D / Prior)", 85, y + 5.5);
+    doc.text("Activity Growth", 122, y + 5.5);
+    doc.text("Goal Completion %", 155, y + 5.5);
+    y += 8;
+
+    categoryTrends.forEach((trend) => {
+      checkNewPage(12);
+      // Row background
+      doc.setFillColor(253, 252, 250);
+      doc.rect(15, y, 180, 8, "F");
+      doc.setDrawColor(240, 240, 240);
+      doc.line(15, y + 8, 195, y + 8);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(40, 40, 40);
+      doc.text(trend.category.name, 18, y + 5.5);
+
+      doc.setFont("courier", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(60, 60, 60);
+      doc.text(`${trend.trackersCount}`, 55, y + 5.5);
+      doc.text(`${trend.last7Count} / ${trend.prev7Count}`, 85, y + 5.5);
+
+      // Growth status
+      let growthTxt = trend.diff > 0 ? `+${trend.percentChange}%` : `${trend.percentChange}%`;
+      if (trend.diff === 0) growthTxt = "0%";
+      doc.setFont("courier", "bold");
+      if (trend.trendStatus === 'improving') {
+        doc.setTextColor(16, 122, 87); // Emerald dark
+        growthTxt += " ▲";
+      } else if (trend.trendStatus === 'declining') {
+        doc.setTextColor(190, 24, 74); // Rose dark
+        growthTxt += " ▼";
+      } else {
+        doc.setTextColor(100, 100, 100);
+      }
+      doc.text(growthTxt, 122, y + 5.5);
+
+      // Goal Rate
+      doc.setFont("courier", "normal");
+      doc.setTextColor(60, 60, 60);
+      if (trend.last7GoalRate !== null) {
+        let diffText = "";
+        if (trend.goalRateDiff !== null && trend.goalRateDiff > 0) diffText = ` (+${trend.goalRateDiff}%)`;
+        else if (trend.goalRateDiff !== null && trend.goalRateDiff < 0) diffText = ` (${trend.goalRateDiff}%)`;
+        doc.text(`${trend.last7GoalRate}%${diffText}`, 155, y + 5.5);
+      } else {
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(8);
+        doc.setTextColor(140, 140, 140);
+        doc.text("No active goals", 155, y + 5.5);
+      }
+
+      y += 8;
+    });
+
+    y += 10;
+
+    // --- SECTION 3: INDIVIDUAL TRACKER PERFORMANCE ---
+    checkNewPage(45);
+    doc.setFont("times", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(40, 40, 40);
+    doc.text("3. Individual Tracker Performance & Metric Breakdown", 15, y);
+    y += 6;
+
+    trackers.forEach((tracker, idx) => {
+      // Calculate individual stats for this tracker
+      const trackerLogs = logs.filter(l => l.trackerId === tracker.id);
+      
+      // Let's filter dates to build a basic dataset
+      const today = new Date();
+      const trackerDates: string[] = [];
+      const numDays = 14; // Let's look at 14 days of logs
+      for (let i = numDays - 1; i >= 0; i--) {
+        const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+        trackerDates.push(d.toISOString().split('T')[0]);
+      }
+
+      const activeLogs = trackerLogs.filter(l => trackerDates.includes(l.date));
+      const totalLoggedValue = activeLogs.reduce((acc, log) => acc + log.value, 0);
+      const avgVal = activeLogs.length > 0 ? parseFloat((totalLoggedValue / numDays).toFixed(1)) : 0;
+      
+      // Calculate current streak
+      let streak = 0;
+      let streakDate = new Date();
+      let hasLogTodayOrYesterday = false;
+
+      // Find logs per date
+      const logDatesSet = new Set(trackerLogs.map(l => l.date));
+      const todayStr = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 86400000);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      if (logDatesSet.has(todayStr)) {
+        hasLogTodayOrYesterday = true;
+      } else if (logDatesSet.has(yesterdayStr)) {
+        hasLogTodayOrYesterday = true;
+        streakDate = yesterday;
+      }
+
+      if (hasLogTodayOrYesterday) {
+        let currentStreakDate = streakDate;
+        while (true) {
+          const dateString = currentStreakDate.toISOString().split('T')[0];
+          if (logDatesSet.has(dateString)) {
+            streak++;
+            currentStreakDate = new Date(currentStreakDate.getTime() - 86400000);
+          } else {
+            break;
+          }
+        }
+      }
+
+      // Find Best Value
+      let bestValue = 0;
+      let bestDate = 'N/A';
+      if (trackerLogs.length > 0) {
+        if (tracker.type === 'counter') {
+          // Find max summed day
+          const daySums: Record<string, number> = {};
+          trackerLogs.forEach(l => {
+            daySums[l.date] = (daySums[l.date] || 0) + l.value;
+          });
+          const sorted = Object.entries(daySums).sort((a, b) => b[1] - a[1]);
+          if (sorted.length > 0) {
+            bestValue = sorted[0][1];
+            bestDate = sorted[0][0];
+          }
+        } else {
+          const sorted = [...trackerLogs].sort((a, b) => b.value - a.value);
+          bestValue = sorted[0].value;
+          bestDate = sorted[0].date;
+        }
+      }
+
+      checkNewPage(45);
+      
+      // Draw sub-header for this specific tracker
+      doc.setFillColor(247, 246, 241);
+      doc.rect(15, y, 180, 7, "F");
+      
+      doc.setFont("times", "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(40, 40, 40);
+      doc.text(`${idx + 1}. ${tracker.name}`, 18, y + 5);
+
+      const catName = CATEGORIES.find(c => c.id === tracker.category)?.name || tracker.category;
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8);
+      doc.setTextColor(140, 140, 140);
+      doc.text(`Category: ${catName} | Type: ${tracker.type.toUpperCase()}`, 110, y + 5);
+
+      y += 7;
+
+      // Card border
+      doc.setDrawColor(230, 225, 215);
+      doc.rect(15, y, 180, 28, "S");
+
+      // Stats inside card
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(80, 80, 80);
+      
+      // Left Column
+      doc.text("Current Streak:", 20, y + 7);
+      doc.setFont("courier", "bold");
+      doc.text(`${streak} days`, 55, y + 7);
+
+      doc.setFont("helvetica", "normal");
+      doc.text("Total Logs (All-time):", 20, y + 14);
+      doc.setFont("courier", "bold");
+      doc.text(`${trackerLogs.length} times`, 55, y + 14);
+
+      doc.setFont("helvetica", "normal");
+      doc.text("Defined Goal Target:", 20, y + 21);
+      doc.setFont("courier", "bold");
+      doc.text(tracker.targetValue ? `${tracker.targetValue} ${tracker.unit || ''}` : "None", 55, y + 21);
+
+      // Right Column
+      doc.setFont("helvetica", "normal");
+      doc.text("Peak Performance:", 105, y + 7);
+      doc.setFont("courier", "bold");
+      doc.text(bestValue > 0 ? `${bestValue} (${bestDate})` : "N/A", 140, y + 7);
+
+      doc.setFont("helvetica", "normal");
+      doc.text("Recent Avg (14D):", 105, y + 14);
+      doc.setFont("courier", "bold");
+      doc.text(`${avgVal} ${tracker.unit || ''}`, 140, y + 14);
+
+      doc.setFont("helvetica", "normal");
+      doc.text("Goal Target Met:", 105, y + 21);
+      doc.setFont("courier", "bold");
+      if (tracker.targetValue) {
+        // Count days goal reached in last 14 days
+        let metDays = 0;
+        trackerDates.forEach(dateStr => {
+          const dayLogs = trackerLogs.filter(l => l.date === dateStr);
+          let val = 0;
+          if (tracker.type === 'counter') {
+            val = dayLogs.reduce((acc, l) => acc + l.value, 0);
+          } else if (dayLogs.length > 0) {
+            val = dayLogs[dayLogs.length - 1].value;
+          }
+          if (val >= tracker.targetValue!) metDays++;
+        });
+        const pct = Math.round((metDays / numDays) * 100);
+        doc.text(`${metDays}/${numDays} days (${pct}%)`, 140, y + 21);
+      } else {
+        doc.text("N/A", 140, y + 21);
+      }
+
+      y += 33;
+    });
+
+    // Footer signature / disclaimer on final page
+    checkNewPage(15);
+    y += 5;
+    doc.setDrawColor(240, 240, 240);
+    doc.line(15, y, 195, y);
+    y += 6;
+    doc.setFont("times", "italic");
+    doc.setFontSize(8.5);
+    doc.setTextColor(140, 140, 140);
+    doc.text("This report is generated locally and stored securely on your client-side ledger.", 15, y);
+    doc.text("Data Tracker © 2026. All rights reserved.", 195, y, { align: 'right' });
+
+    // Save PDF
+    doc.save(`Metrics_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   // Calculate 7-day data for all trackers to use in "Weekly Trends" view
   const last7DaysData = useMemo(() => {
     const list: string[] = [];
@@ -676,31 +1019,45 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   return (
     <div className="space-y-6">
       {/* Analytics View Selector Tabs */}
-      <div className="flex border-b border-editorial-dark/15 pb-px">
-        <button
-          type="button"
-          id="tab-individual-view"
-          onClick={() => setAnalyticsView('individual')}
-          className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
-            analyticsView === 'individual'
-              ? 'border-editorial-accent text-editorial-accent'
-              : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
-          }`}
-        >
-          Individual Metrics
-        </button>
-        <button
-          type="button"
-          id="tab-weekly-view"
-          onClick={() => setAnalyticsView('weekly')}
-          className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
-            analyticsView === 'weekly'
-              ? 'border-editorial-accent text-editorial-accent'
-              : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
-          }`}
-        >
-          Weekly Trends (7D)
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-editorial-dark/15 pb-px gap-4">
+        <div className="flex flex-wrap">
+          <button
+            type="button"
+            id="tab-individual-view"
+            onClick={() => setAnalyticsView('individual')}
+            className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
+              analyticsView === 'individual'
+                ? 'border-editorial-accent text-editorial-accent'
+                : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
+            }`}
+          >
+            Individual Metrics
+          </button>
+          <button
+            type="button"
+            id="tab-weekly-view"
+            onClick={() => setAnalyticsView('weekly')}
+            className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
+              analyticsView === 'weekly'
+                ? 'border-editorial-accent text-editorial-accent'
+                : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
+            }`}
+          >
+            Weekly Trends (7D)
+          </button>
+        </div>
+
+        <div className="pb-2.5 sm:pb-0 flex shrink-0">
+          <button
+            type="button"
+            onClick={handleDownloadPDF}
+            className="inline-flex items-center gap-2 border border-editorial-dark/20 hover:border-editorial-accent text-editorial-dark hover:text-editorial-accent px-4 py-1.5 text-xs font-mono font-medium transition-all cursor-pointer bg-editorial-bg shadow-xs"
+            title="Download Printable PDF Report"
+          >
+            <Download size={14} className="stroke-[1.5px] text-editorial-accent" />
+            <span>Download PDF Report</span>
+          </button>
+        </div>
       </div>
 
       {analyticsView === 'individual' ? (
