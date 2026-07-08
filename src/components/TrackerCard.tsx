@@ -451,6 +451,129 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
         </div>
       )}
 
+      {/* Streak Fire and Progress visualization */}
+      {streak > 0 && (
+        <div className="mt-4 p-3.5 bg-editorial-orange/5 border border-editorial-orange/15 rounded-none flex flex-col gap-2.5 relative overflow-hidden">
+          {/* Animated pulsing ember dots background to simulate heat / fire glow */}
+          <div className="absolute inset-0 pointer-events-none opacity-40 overflow-hidden">
+            <motion.div 
+              animate={{ 
+                scale: [1, 1.2, 1],
+                opacity: [0.2, 0.5, 0.2],
+                x: [0, 6, -4, 0],
+                y: [0, -6, 4, 0]
+              }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute -right-4 -bottom-4 w-12 h-12 rounded-full bg-editorial-orange/20 blur-xl"
+            />
+          </div>
+
+          <div className="flex items-center justify-between z-10">
+            <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-editorial-orange flex items-center gap-1">
+              <Flame size={12} className="fill-editorial-orange animate-bounce" />
+              <span>Consecutive Streak</span>
+            </span>
+            <span className="text-[10px] font-mono font-bold text-editorial-orange bg-editorial-orange/10 px-1.5 py-0.5 border border-editorial-orange/25">
+              {streak} {streak === 1 ? 'day' : 'days'}
+            </span>
+          </div>
+
+          {/* Individual Day Dot Badges (last 7 days checklist streak visualization) */}
+          <div className="flex items-center justify-between gap-1 z-10 px-0.5">
+            {Array.from({ length: 7 }).map((_, index) => {
+              // Day index backwards: 6 is today, 0 is 6 days ago
+              const dayOffset = 6 - index;
+              const dateObj = new Date(selectedDate + 'T12:00:00');
+              dateObj.setDate(dateObj.getDate() - dayOffset);
+              const dateStr = dateObj.toISOString().split('T')[0];
+
+              // Check if goal was met or logged on that date
+              const tLogs = logs.filter(l => l.trackerId === tracker.id && l.date === dateStr);
+              let wasMet = false;
+              if (tLogs.length > 0) {
+                let val = 0;
+                if (tracker.type === 'counter') {
+                  val = tLogs.reduce((sum, l) => sum + l.value, 0);
+                } else {
+                  val = tLogs[tLogs.length - 1].value;
+                }
+                const targetVal = tracker.targetValue;
+                if (targetVal !== undefined && targetVal > 0) {
+                  wasMet = val >= targetVal;
+                } else {
+                  wasMet = tLogs.length > 0;
+                }
+              }
+
+              return (
+                <div 
+                  key={index} 
+                  className="flex flex-col items-center gap-1 flex-1"
+                  title={`${dateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}: ${wasMet ? 'Goal Met' : 'Not Met'}`}
+                >
+                  <div className="text-[7px] font-mono text-editorial-dark/40 font-bold uppercase tracking-wider">
+                    {dateObj.toLocaleDateString(undefined, { weekday: 'narrow' })}
+                  </div>
+                  <motion.div 
+                    animate={wasMet ? {
+                      scale: [1, 1.15, 1],
+                      rotate: [0, 4, -4, 0],
+                    } : {}}
+                    transition={{ duration: 0.4, delay: index * 0.04 }}
+                    className={`h-4.5 w-full flex items-center justify-center border transition-all ${
+                      wasMet 
+                        ? 'bg-editorial-orange text-editorial-bg border-editorial-orange' 
+                        : 'bg-editorial-bg/30 border-editorial-dark/10 text-editorial-dark/20'
+                    }`}
+                  >
+                    {wasMet ? (
+                      <Flame size={10} className="fill-editorial-bg" />
+                    ) : (
+                      <span className="w-1 h-1 rounded-full bg-editorial-dark/15" />
+                    )}
+                  </motion.div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Next major streak level milestone indicator */}
+          {(() => {
+            const milestones = [3, 7, 14, 30, 60, 90, 120, 150, 180, 365];
+            const nextMilestone = milestones.find(m => m > streak) || (Math.floor(streak / 30) + 1) * 30;
+            const prevMilestone = milestones.slice().reverse().find(m => m <= streak) || 0;
+            const totalRange = nextMilestone - prevMilestone;
+            const currentOffset = streak - prevMilestone;
+            const milestonePercent = Math.min(Math.round((currentOffset / totalRange) * 100), 100);
+
+            return (
+              <div className="space-y-1 mt-0.5 z-10">
+                <div className="flex justify-between text-[7px] font-mono text-editorial-orange/60 font-semibold uppercase tracking-wider">
+                  <span>Milestone track</span>
+                  <span>{streak} / {nextMilestone} days</span>
+                </div>
+                <div className="h-1 w-full bg-editorial-orange/15 overflow-hidden relative">
+                  <motion.div
+                    animate={{
+                      left: ["0%", "100%", "0%"],
+                      opacity: [0.2, 0.7, 0.2]
+                    }}
+                    transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                    className="absolute top-0 bottom-0 w-2.5 bg-white/40 blur-xs pointer-events-none"
+                  />
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${milestonePercent}%` }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    className="h-full bg-editorial-orange"
+                  />
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Note indicator and edit note input */}
       <div className="mt-4 border-t border-editorial-dark/10 pt-3">
         <AnimatePresence initial={false}>
