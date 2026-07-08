@@ -65,7 +65,7 @@ interface Insight {
 type TimeMode = '7' | '30' | '90' | 'custom';
 
 export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
-  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly' | 'heatmap'>('individual');
+  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly' | 'heatmap' | 'category_baselines'>('individual');
   const [selectedTrackerId, setSelectedTrackerId] = useState<string>(
     trackers.length > 0 ? trackers[0].id : ''
   );
@@ -194,6 +194,86 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     }
     return list;
   }, [timeMode, customStartDate, customEndDate]);
+
+  // Daily average values for each tracker category over the selected range
+  const categoryBaselineStats = useMemo(() => {
+    return CATEGORIES.map(category => {
+      // Find trackers in this category
+      const catTrackers = trackers.filter(t => t.category === category.id);
+      
+      const trackerStats = catTrackers.map(tracker => {
+        let totalValue = 0;
+        let loggedDays = 0;
+        
+        dateRangeList.forEach(dateStr => {
+          const dayLogs = logs.filter(l => l.trackerId === tracker.id && l.date === dateStr);
+          if (dayLogs.length > 0) {
+            loggedDays++;
+            if (tracker.type === 'counter') {
+              totalValue += dayLogs.reduce((sum, l) => sum + l.value, 0);
+            } else {
+              totalValue += dayLogs[dayLogs.length - 1].value;
+            }
+          }
+        });
+        
+        let average = 0;
+        if (tracker.type === 'counter') {
+          average = dateRangeList.length > 0 ? Math.round((totalValue / dateRangeList.length) * 10) / 10 : 0;
+        } else if (tracker.type === 'boolean') {
+          average = dateRangeList.length > 0 ? Math.round((totalValue / dateRangeList.length) * 100) : 0;
+        } else {
+          average = loggedDays > 0 ? Math.round((totalValue / loggedDays) * 10) / 10 : 0;
+        }
+
+        // Goal completion rate
+        let targetMetDays = 0;
+        if (tracker.targetValue !== undefined && tracker.targetValue > 0) {
+          dateRangeList.forEach(dateStr => {
+            const dayLogs = logs.filter(l => l.trackerId === tracker.id && l.date === dateStr);
+            let dayVal = 0;
+            if (dayLogs.length > 0) {
+              if (tracker.type === 'counter') {
+                dayVal = dayLogs.reduce((sum, l) => sum + l.value, 0);
+              } else {
+                dayVal = dayLogs[dayLogs.length - 1].value;
+              }
+            }
+            if (dayVal >= tracker.targetValue!) {
+              targetMetDays++;
+            }
+          });
+        }
+        const goalSuccessRate = tracker.targetValue !== undefined && tracker.targetValue > 0 && dateRangeList.length > 0
+          ? Math.round((targetMetDays / dateRangeList.length) * 100)
+          : null;
+
+        return {
+          ...tracker,
+          average,
+          loggedDays,
+          goalSuccessRate,
+        };
+      });
+
+      // Calculate Category Level baseline aggregates
+      const totalLogs = logs.filter(l => 
+        catTrackers.some(t => t.id === l.trackerId) && 
+        dateRangeList.includes(l.date)
+      ).length;
+      
+      const avgDailyLogs = dateRangeList.length > 0 
+        ? Math.round((totalLogs / dateRangeList.length) * 10) / 10 
+        : 0;
+
+      return {
+        category,
+        trackers: trackerStats,
+        avgDailyLogs,
+        totalTrackers: catTrackers.length,
+      };
+    });
+  }, [trackers, logs, dateRangeList]);
 
   // Calculate chart data for selected tracker
   const chartData = useMemo(() => {
@@ -1204,6 +1284,18 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           >
             Weekly Habit Heatmap
           </button>
+          <button
+            type="button"
+            id="tab-category-baselines"
+            onClick={() => setAnalyticsView('category_baselines')}
+            className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
+              analyticsView === 'category_baselines'
+                ? 'border-editorial-accent text-editorial-accent'
+                : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
+            }`}
+          >
+            Category Baselines
+          </button>
         </div>
 
         <div className="pb-2.5 sm:pb-0 flex shrink-0">
@@ -2143,6 +2235,141 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
               [1, 5],
               [1, 2, 3, 4, 5]
             )}
+          </div>
+        </div>
+      ) : analyticsView === 'category_baselines' ? (
+        /* Category Baselines View */
+        <div className="space-y-8">
+          {/* Header Block */}
+          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15">
+            <h3 className="font-serif font-medium text-lg text-editorial-dark">
+              Category Daily Baselines & Performance
+            </h3>
+            <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">
+              Analyze your baseline daily averages, goal accomplishment ratios, and log consistency grouped by tracker category over the selected {periodDays}-day period.
+            </p>
+          </div>
+
+          {/* Grid of Categories */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {categoryBaselineStats.map(({ category, trackers: catTrackers, avgDailyLogs, totalTrackers }) => {
+              const themeColor = category.color; // e.g. emerald, blue, indigo, violet, amber, rose
+              
+              return (
+                <div 
+                  key={category.id} 
+                  className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col justify-between"
+                  style={{
+                    borderLeft: `3px solid var(--editorial-${themeColor}, #c7b38f)`
+                  }}
+                >
+                  <div className="space-y-5">
+                    {/* Category Header */}
+                    <div className="flex items-center justify-between border-b border-editorial-dark/5 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div 
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none"
+                          style={{
+                            backgroundColor: `var(--editorial-${themeColor}-light, #f7f5f0)`,
+                            color: `var(--editorial-${themeColor}, #c7b38f)`,
+                            border: `1px solid var(--editorial-${themeColor}-border, rgba(0,0,0,0.1))`
+                          }}
+                        >
+                          <LucideIcon name={category.icon} size={16} />
+                        </div>
+                        <div>
+                          <h4 className="font-serif font-medium text-sm text-editorial-dark">
+                            {category.name}
+                          </h4>
+                          <span className="text-[10px] font-mono text-editorial-dark/45 uppercase tracking-wider">
+                            {totalTrackers} {totalTrackers === 1 ? 'Tracker' : 'Trackers'}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="text-right">
+                        <span className="inline-flex items-center text-[10px] font-mono font-medium text-editorial-dark/65 bg-editorial-dark/5 border border-editorial-dark/10 px-2 py-0.5">
+                          Avg {avgDailyLogs} logs / day
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Trackers List */}
+                    <div className="space-y-4">
+                      {catTrackers.length === 0 ? (
+                        <div className="py-6 text-center border border-dashed border-editorial-dark/10 bg-editorial-dark/[0.01]">
+                          <p className="text-xs font-sans italic text-editorial-dark/40">
+                            No trackers configured in this category
+                          </p>
+                        </div>
+                      ) : (
+                        catTrackers.map(tracker => {
+                          const isBoolean = tracker.type === 'boolean';
+                          const isRating = tracker.type === 'rating';
+                          const isCounter = tracker.type === 'counter';
+                          const hasGoal = tracker.targetValue !== undefined && tracker.targetValue > 0;
+
+                          return (
+                            <div key={tracker.id} className="border-b border-editorial-dark/5 pb-3.5 last:border-0 last:pb-0">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-2">
+                                  <span 
+                                    className="w-1.5 h-1.5 rounded-none" 
+                                    style={{ backgroundColor: `var(--editorial-${tracker.color})` }}
+                                  />
+                                  <div>
+                                    <span className="text-xs font-sans font-medium text-editorial-dark">
+                                      {tracker.name}
+                                    </span>
+                                    <span className="text-[9px] font-mono text-editorial-dark/40 block">
+                                      Type: {tracker.type}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="text-right">
+                                  <div className="text-xs font-mono font-bold text-editorial-dark">
+                                    {isBoolean ? (
+                                      <span>{tracker.average}% completion</span>
+                                    ) : isRating ? (
+                                      <span>{tracker.average} <span className="text-[10px] text-editorial-dark/45 font-normal">/ 5 avg</span></span>
+                                    ) : (
+                                      <span>{tracker.average} <span className="text-[10px] text-editorial-dark/45 font-normal">{tracker.unit || ''} / day</span></span>
+                                    )}
+                                  </div>
+                                  <span className="text-[9px] font-sans text-editorial-dark/40 block">
+                                    Logged {tracker.loggedDays} of {periodDays} days
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Goal Success Tracker */}
+                              {hasGoal && (
+                                <div className="mt-2 space-y-1 bg-editorial-dark/[0.01] border border-editorial-dark/5 p-2">
+                                  <div className="flex justify-between text-[9px] font-mono text-editorial-dark/50">
+                                    <span>Target: &ge; {tracker.targetValue} {tracker.unit || ''}</span>
+                                    <span className="font-bold text-editorial-dark">{tracker.goalSuccessRate}% success</span>
+                                  </div>
+                                  <div className="w-full bg-editorial-dark/10 h-1">
+                                    <div 
+                                      className="h-full" 
+                                      style={{ 
+                                        width: `${tracker.goalSuccessRate}%`,
+                                        backgroundColor: `var(--editorial-${tracker.color})`
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : (
