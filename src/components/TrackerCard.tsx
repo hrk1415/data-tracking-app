@@ -6,8 +6,9 @@
 import React, { useState } from 'react';
 import { Tracker, LogEntry, COLOR_MAP } from '../types';
 import { LucideIcon } from './LucideIcon';
-import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown, LineChart as LineChartIcon, X, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
 interface TrackerCardProps {
   key?: string;
@@ -134,6 +135,40 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
   const [numInput, setNumInput] = useState<string>('');
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteText, setNoteText] = useState('');
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+
+  // Calculate the last 30 days data
+  const last30DaysData = React.useMemo(() => {
+    const refDate = new Date(selectedDate + 'T12:00:00');
+    const data = [];
+
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(refDate.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayLogs = logs.filter(l => l.trackerId === tracker.id && l.date === dateStr);
+
+      let val = 0;
+      if (tracker.type === 'counter') {
+        val = dayLogs.reduce((sum, log) => sum + log.value, 0);
+      } else {
+        val = dayLogs.length > 0 ? dayLogs[dayLogs.length - 1].value : 0;
+      }
+
+      const displayDate = d.toLocaleDateString(undefined, { 
+        month: 'short', 
+        day: 'numeric' 
+      });
+
+      data.push({
+        date: dateStr,
+        displayDate,
+        value: val,
+        hasLogs: dayLogs.length > 0,
+      });
+    }
+
+    return data;
+  }, [logs, tracker, selectedDate]);
 
   const colorStyles = COLOR_MAP[tracker.color] || COLOR_MAP.emerald;
 
@@ -215,7 +250,17 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
             <LucideIcon name={tracker.icon} size={20} />
           </div>
           <div>
-            <h4 className="font-serif font-medium text-base text-editorial-dark line-clamp-1 leading-tight">{tracker.name}</h4>
+            <div className="flex items-center gap-1.5">
+              <h4 className="font-serif font-medium text-base text-editorial-dark line-clamp-1 leading-tight">{tracker.name}</h4>
+              <button
+                type="button"
+                onClick={() => setIsHistoryModalOpen(true)}
+                className="text-editorial-dark/35 hover:text-editorial-accent p-0.5 hover:bg-editorial-accent-light/40 transition-colors shrink-0 cursor-pointer"
+                title="View 30-Day History"
+              >
+                <LineChartIcon size={13} />
+              </button>
+            </div>
             <p className="text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest mt-0.5">{tracker.category} tracker</p>
           </div>
         </div>
@@ -705,6 +750,226 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
           )}
         </AnimatePresence>
       </div>
+
+      {/* 30-Day History Modal */}
+      <AnimatePresence>
+        {isHistoryModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsHistoryModalOpen(false)}
+              className="absolute inset-0 bg-editorial-dark/70 backdrop-blur-xs"
+            />
+
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: "spring", duration: 0.5 }}
+              className="relative w-full max-w-2xl bg-editorial-bg border border-editorial-dark/20 p-6 md:p-8 space-y-6 shadow-2xl z-10 max-h-[90vh] overflow-y-auto"
+            >
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setIsHistoryModalOpen(false)}
+                className="absolute top-4 right-4 text-editorial-dark/50 hover:text-editorial-dark hover:bg-editorial-dark/5 p-1.5 transition-colors border border-transparent hover:border-editorial-dark/10 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+
+              {/* Modal Header */}
+              <div className="flex items-center gap-3.5 border-b border-editorial-dark/10 pb-4.5 pr-8">
+                <div className={`flex h-12 w-12 items-center justify-center text-white shrink-0 ${colorStyles.bg}`}>
+                  <LucideIcon name={tracker.icon} size={24} />
+                </div>
+                <div>
+                  <h3 className="font-serif font-medium text-lg text-editorial-dark">
+                    {tracker.name} History
+                  </h3>
+                  <p className="text-xs font-mono text-editorial-dark/50 uppercase tracking-wider mt-0.5">
+                    30-Day Progress Journal & Analytics
+                  </p>
+                </div>
+              </div>
+
+              {/* Stats Overview */}
+              {(() => {
+                const totalLogs = last30DaysData.filter(d => d.hasLogs).length;
+                const loggedValues = last30DaysData.filter(d => d.hasLogs).map(d => d.value);
+                const averageValue = loggedValues.length > 0 
+                  ? Math.round((loggedValues.reduce((a, b) => a + b, 0) / loggedValues.length) * 10) / 10
+                  : 0;
+                const maxValue = loggedValues.length > 0 ? Math.max(...loggedValues) : 0;
+                
+                // Calculate target compliance rate if there is a goal
+                let complianceRate = 0;
+                if (tracker.targetValue !== undefined && tracker.targetValue > 0) {
+                  const targetMetDays = last30DaysData.filter(d => d.hasLogs && d.value >= (tracker.targetValue ?? 0)).length;
+                  complianceRate = Math.round((targetMetDays / 30) * 100);
+                } else {
+                  complianceRate = Math.round((totalLogs / 30) * 100);
+                }
+
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="border border-editorial-dark/10 p-3 bg-editorial-bg/50">
+                      <span className="block text-[8px] font-mono text-editorial-dark/45 uppercase tracking-widest">Logged Days</span>
+                      <p className="text-xl font-mono font-medium text-editorial-dark mt-1">
+                        {totalLogs} <span className="text-[10px] font-sans font-normal text-editorial-dark/40">/ 30 d</span>
+                      </p>
+                    </div>
+                    <div className="border border-editorial-dark/10 p-3 bg-editorial-bg/50">
+                      <span className="block text-[8px] font-mono text-editorial-dark/45 uppercase tracking-widest">
+                        {tracker.targetValue ? 'Goal Compliance' : 'Activity Rate'}
+                      </span>
+                      <p className="text-xl font-mono font-medium text-editorial-accent mt-1">
+                        {complianceRate}%
+                      </p>
+                    </div>
+                    <div className="border border-editorial-dark/10 p-3 bg-editorial-bg/50">
+                      <span className="block text-[8px] font-mono text-editorial-dark/45 uppercase tracking-widest">Active Avg</span>
+                      <p className="text-xl font-mono font-medium text-editorial-dark mt-1">
+                        {averageValue} <span className="text-[9px] font-sans font-normal text-editorial-dark/50 lowercase">{tracker.unit || ''}</span>
+                      </p>
+                    </div>
+                    <div className="border border-editorial-dark/10 p-3 bg-editorial-bg/50">
+                      <span className="block text-[8px] font-mono text-editorial-dark/45 uppercase tracking-widest">30d Peak</span>
+                      <p className="text-xl font-mono font-medium text-editorial-dark mt-1">
+                        {maxValue} <span className="text-[9px] font-sans font-normal text-editorial-dark/50 lowercase">{tracker.unit || ''}</span>
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Chart Container */}
+              <div className="space-y-2">
+                <span className="block text-[9px] font-mono font-bold uppercase tracking-wider text-editorial-dark/45">
+                  Visual History (Last 30 Days)
+                </span>
+                <div className="h-[220px] w-full border border-editorial-dark/10 p-4 bg-editorial-bg/50">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={last30DaysData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="var(--color-editorial-dark)" strokeOpacity={0.08} />
+                      <XAxis
+                        dataKey="displayDate"
+                        tick={{ fontSize: 8, fill: 'var(--color-editorial-dark)', opacity: 0.5, fontFamily: 'monospace' }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval={4}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 8, fill: 'var(--color-editorial-dark)', opacity: 0.5, fontFamily: 'monospace' }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-editorial-dark text-editorial-bg rounded-none p-3 shadow-md text-xs space-y-1 font-sans border border-editorial-accent/30 text-left">
+                                <p className="font-mono text-[9px] text-editorial-bg/60 border-b border-editorial-bg/15 pb-1 mb-1">
+                                  {new Date(data.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                </p>
+                                <p className="font-serif text-xs">
+                                  Value: <span className="font-mono font-bold text-editorial-accent">{data.value} {tracker.unit || ''}</span>
+                                </p>
+                                {!data.hasLogs && (
+                                  <p className="text-[9px] text-editorial-bg/40 italic">No direct logs entered</p>
+                                )}
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#cca08a"
+                        strokeWidth={2}
+                        dot={({ cx, cy, payload }) => {
+                          if (!payload.hasLogs) return <circle cx={cx} cy={cy} r={0} key={payload.date} />;
+                          return <circle cx={cx} cy={cy} r={3.5} fill="#cca08a" stroke="#ffffff" strokeWidth={1} key={payload.date} />;
+                        }}
+                        activeDot={{ r: 5, fill: '#8fa89b', strokeWidth: 0 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Logs Journal (Recent 30-day entries list) */}
+              <div className="space-y-2">
+                <span className="block text-[9px] font-mono font-bold uppercase tracking-wider text-editorial-dark/45">
+                  Historical Log & Notes (Last 30 Days)
+                </span>
+                {(() => {
+                  // Get all logs in the last 30 days for this tracker
+                  const refDate = new Date(selectedDate + 'T12:00:00');
+                  const d30Ago = new Date(refDate.getTime() - 29 * 24 * 60 * 60 * 1000);
+                  const d30AgoStr = d30Ago.toISOString().split('T')[0];
+
+                  const recentLogs = logs
+                    .filter(l => l.trackerId === tracker.id && l.date >= d30AgoStr && l.date <= selectedDate)
+                    .sort((a, b) => b.date.localeCompare(a.date));
+
+                  if (recentLogs.length === 0) {
+                    return (
+                      <div className="text-center py-6 border border-dashed border-editorial-dark/15 text-editorial-dark/40 text-xs italic font-serif">
+                        No entries recorded in the last 30 days.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="max-h-[160px] overflow-y-auto border border-editorial-dark/10 divide-y divide-editorial-dark/5 bg-editorial-bg/40 text-left">
+                      {recentLogs.map((log, index) => {
+                        const logDate = new Date(log.date + 'T12:00:00');
+                        return (
+                          <div key={log.id || index} className="p-2.5 flex items-start justify-between gap-3 text-xs">
+                            <div className="space-y-0.5">
+                              <span className="font-mono text-[9px] text-editorial-dark/45">
+                                {logDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                              {log.note && (
+                                <p className="text-editorial-dark/80 italic font-sans">{log.note}</p>
+                              )}
+                            </div>
+                            <span className="font-mono font-semibold text-editorial-dark shrink-0">
+                              {log.value} {tracker.unit || ''}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Footer */}
+              <div className="border-t border-editorial-dark/10 pt-4 flex justify-between items-center text-[10px] font-mono text-editorial-dark/40">
+                <span className="flex items-center gap-1">
+                  <Info size={11} className="text-editorial-accent" />
+                  <span>Showing relative 30d timeline from {new Date(selectedDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryModalOpen(false)}
+                  className="font-bold uppercase tracking-wider text-editorial-dark hover:text-editorial-accent transition-colors cursor-pointer"
+                >
+                  Close View
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
