@@ -577,6 +577,119 @@ export default function App() {
     return logs.filter(l => l.date === selectedDate).length;
   }, [logs, selectedDate]);
 
+  // Calculate Goal Streaks: Current Streak and Longest (All-Time) Streak
+  const goalStreaks = useMemo(() => {
+    // Helper to check if 100% daily goals were met on a specific date (YYYY-MM-DD)
+    const is100PercentGoalsMet = (dStr: string) => {
+      const activeTrackersWithGoals = trackers.filter(t => 
+        t.targetValue !== undefined && 
+        t.targetValue > 0 && 
+        (!t.createdAt || t.createdAt.split('T')[0] <= dStr)
+      );
+      
+      if (activeTrackersWithGoals.length === 0) return false;
+      
+      return activeTrackersWithGoals.every(t => {
+        const tLogs = logs.filter(l => l.trackerId === t.id && l.date === dStr);
+        const totalVal = t.type === 'counter'
+          ? tLogs.reduce((sum, l) => sum + l.value, 0)
+          : (tLogs.length > 0 ? tLogs[tLogs.length - 1].value : 0);
+        return totalVal >= t.targetValue!;
+      });
+    };
+
+    let earliestDateStr = selectedDate;
+    if (logs.length > 0) {
+      logs.forEach(l => {
+        if (l.date && l.date.match(/^\d{4}-\d{2}-\d{2}$/) && l.date < earliestDateStr) {
+          earliestDateStr = l.date;
+        }
+      });
+    }
+
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    const dateList: string[] = [];
+    try {
+      const startDate = new Date(earliestDateStr + 'T12:00:00');
+      const endDate = new Date((selectedDate > todayStr ? selectedDate : todayStr) + 'T12:00:00');
+      
+      if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+        const tempDate = new Date(startDate);
+        let safetyGuard = 0;
+        while (tempDate <= endDate && safetyGuard < 5000) {
+          dateList.push(tempDate.toISOString().split('T')[0]);
+          tempDate.setDate(tempDate.getDate() + 1);
+          safetyGuard++;
+        }
+      }
+    } catch (err) {
+      console.error("Error generating date list for streak calculation", err);
+    }
+
+    // Calculate all-time longest streak
+    let longestStreak = 0;
+    let currentTempStreak = 0;
+    
+    dateList.forEach(dStr => {
+      if (is100PercentGoalsMet(dStr)) {
+        currentTempStreak++;
+        if (currentTempStreak > longestStreak) {
+          longestStreak = currentTempStreak;
+        }
+      } else {
+        currentTempStreak = 0;
+      }
+    });
+
+    // Calculate current streak working backwards from selectedDate
+    let currentStreak = 0;
+    try {
+      let checkDateObj = new Date(selectedDate + 'T12:00:00');
+      const safetyLimit = Math.max(365, dateList.length + 10);
+      let count = 0;
+
+      const metToday = is100PercentGoalsMet(selectedDate);
+      if (metToday) {
+        currentStreak = 1;
+        while (count < safetyLimit) {
+          checkDateObj.setDate(checkDateObj.getDate() - 1);
+          const prevDateStr = checkDateObj.toISOString().split('T')[0];
+          if (is100PercentGoalsMet(prevDateStr)) {
+            currentStreak++;
+          } else {
+            break;
+          }
+          count++;
+        }
+      } else {
+        checkDateObj.setDate(checkDateObj.getDate() - 1);
+        const prevDateStr = checkDateObj.toISOString().split('T')[0];
+        if (is100PercentGoalsMet(prevDateStr)) {
+          currentStreak = 1;
+          while (count < safetyLimit) {
+            checkDateObj.setDate(checkDateObj.getDate() - 1);
+            const nextPrevDateStr = checkDateObj.toISOString().split('T')[0];
+            if (is100PercentGoalsMet(nextPrevDateStr)) {
+              currentStreak++;
+            } else {
+              break;
+            }
+            count++;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error calculating current streak", err);
+    }
+
+    return {
+      currentStreak,
+      longestStreak: Math.max(longestStreak, currentStreak),
+    };
+  }, [trackers, logs, selectedDate]);
+
   // Overall statistics
   const totalLogsCount = logs.length;
   const healthCategoryCount = trackers.filter(t => t.category === 'health').length;
@@ -1123,11 +1236,19 @@ export default function App() {
                         )}
                       </h3>
                     </div>
-                    {dailyStats.withGoals > 0 && (
-                      <span className="text-xs font-mono font-medium text-editorial-dark/60 bg-editorial-dark/5 border border-editorial-dark/10 px-2 py-1">
-                        {dailyStats.completedGoals} of {dailyStats.withGoals} Met
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {goalStreaks.currentStreak > 0 && (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-editorial-orange bg-editorial-orange-light border border-editorial-orange/20 px-2.5 py-1" title={`${goalStreaks.currentStreak} day consecutive goal streak!`}>
+                          <Flame size={12} className="text-editorial-orange fill-editorial-orange/15 animate-pulse" />
+                          <span>{goalStreaks.currentStreak}d Streak</span>
+                        </span>
+                      )}
+                      {dailyStats.withGoals > 0 && (
+                        <span className="text-xs font-mono font-medium text-editorial-dark/60 bg-editorial-dark/5 border border-editorial-dark/10 px-2 py-1">
+                          {dailyStats.completedGoals} of {dailyStats.withGoals} Met
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="relative group/progress">
@@ -1349,7 +1470,7 @@ export default function App() {
                 </div>
 
                 {/* Daily Aggregates Bento Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Habits completion card */}
                   <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4.5">
@@ -1390,6 +1511,37 @@ export default function App() {
                       <DiffIndicator diff={dailyStats.completionRate - prevDailyStats.completionRate} prefix="%" />
                       <span className="text-[8px] font-mono text-editorial-dark/45 uppercase tracking-wider">vs yesterday</span>
                     </div>
+                  </div>
+
+                  {/* Streak Card */}
+                  <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4.5">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-none bg-editorial-orange-light border border-editorial-orange/20 text-editorial-orange">
+                        <Flame size={22} className="stroke-[1.5px] fill-editorial-orange/10" />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Goal Streak</span>
+                        <div className="flex items-baseline gap-1 mt-1">
+                          <span className="text-3xl font-mono font-light text-editorial-dark leading-none">
+                            {goalStreaks.currentStreak}
+                          </span>
+                          <span className="text-xs font-serif italic text-editorial-dark/75">
+                            {goalStreaks.currentStreak === 1 ? 'day' : 'days'}
+                          </span>
+                        </div>
+                        <div className="text-[9px] font-mono text-editorial-dark/60 mt-1">
+                          <span>Longest: {goalStreaks.longestStreak}d record</span>
+                        </div>
+                      </div>
+                    </div>
+                    {goalStreaks.currentStreak > 0 && (
+                      <div className="flex flex-col items-end gap-1 shrink-0 self-center">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-editorial-orange bg-editorial-orange-light border border-editorial-orange/20 px-1.5 py-0.5 animate-pulse">
+                          <Sparkles size={10} />
+                          <span>ACTIVE</span>
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Overall logging actions */}
