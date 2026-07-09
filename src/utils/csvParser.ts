@@ -62,12 +62,24 @@ export function parseCSV(csvText: string): string[][] {
   return result;
 }
 
+export interface ColumnMapping {
+  dateIdx: number;
+  nameIdx: number;
+  valIdx: number;
+  catIdx?: number;
+  unitIdx?: number;
+  goalIdx?: number;
+  notesIdx?: number;
+  timestampIdx?: number;
+}
+
 /**
  * Parses and maps CSV row elements into structured trackers and log entries.
  */
 export function importLogsFromCSV(
   csvText: string,
-  existingTrackers: Tracker[]
+  existingTrackers: Tracker[],
+  mapping?: ColumnMapping
 ): { trackers: Tracker[]; logs: LogEntry[]; importedCount: number } | null {
   const parsed = parseCSV(csvText);
   if (parsed.length < 2) return null; // Needs at least header and 1 data row
@@ -75,34 +87,40 @@ export function importLogsFromCSV(
   const headerRow = parsed[0];
   
   // Find column indices
-  let dateIdx = -1;
-  let nameIdx = -1;
-  let catIdx = -1;
-  let valIdx = -1;
-  let unitIdx = -1;
-  let goalIdx = -1;
-  let notesIdx = -1;
-  let timestampIdx = -1;
+  let dateIdx = mapping ? mapping.dateIdx : -1;
+  let nameIdx = mapping ? mapping.nameIdx : -1;
+  let catIdx = mapping ? (mapping.catIdx ?? -1) : -1;
+  let valIdx = mapping ? mapping.valIdx : -1;
+  let unitIdx = mapping ? (mapping.unitIdx ?? -1) : -1;
+  let goalIdx = mapping ? (mapping.goalIdx ?? -1) : -1;
+  let notesIdx = mapping ? (mapping.notesIdx ?? -1) : -1;
+  let timestampIdx = mapping ? (mapping.timestampIdx ?? -1) : -1;
 
-  for (let i = 0; i < headerRow.length; i++) {
-    const h = headerRow[i].toLowerCase().trim();
-    if (/date|day/i.test(h) && dateIdx === -1) dateIdx = i;
-    else if (/tracker\s*name|tracker/i.test(h) && nameIdx === -1) nameIdx = i;
-    else if (/category|cat/i.test(h) && catIdx === -1) catIdx = i;
-    else if (/value|amount|qty|count/i.test(h) && valIdx === -1) valIdx = i;
-    else if (/unit|measure/i.test(h) && unitIdx === -1) unitIdx = i;
-    else if (/goal|target/i.test(h) && goalIdx === -1) goalIdx = i;
-    else if (/notes|note|comment/i.test(h) && notesIdx === -1) notesIdx = i;
-    else if (/logged\s*at|timestamp|time/i.test(h) && timestampIdx === -1) timestampIdx = i;
+  if (!mapping) {
+    for (let i = 0; i < headerRow.length; i++) {
+      const h = headerRow[i].toLowerCase().trim();
+      if (/date|day/i.test(h) && dateIdx === -1) dateIdx = i;
+      else if (/tracker\s*name|tracker/i.test(h) && nameIdx === -1) nameIdx = i;
+      else if (/category|cat/i.test(h) && catIdx === -1) catIdx = i;
+      else if (/value|amount|qty|count/i.test(h) && valIdx === -1) valIdx = i;
+      else if (/unit|measure/i.test(h) && unitIdx === -1) unitIdx = i;
+      else if (/goal|target/i.test(h) && goalIdx === -1) goalIdx = i;
+      else if (/notes|note|comment/i.test(h) && notesIdx === -1) notesIdx = i;
+      else if (/logged\s*at|timestamp|time/i.test(h) && timestampIdx === -1) timestampIdx = i;
+    }
   }
 
   // Require Date, Tracker Name, and Value to form a valid log entry
   if (dateIdx === -1 || nameIdx === -1 || valIdx === -1) {
-    // Try positional fallback mapping if headers aren't explicitly matched
-    if (headerRow.length >= 3) {
-      dateIdx = 0;
-      nameIdx = 1;
-      valIdx = 2;
+    if (!mapping) {
+      // Try positional fallback mapping if headers aren't explicitly matched
+      if (headerRow.length >= 3) {
+        dateIdx = 0;
+        nameIdx = 1;
+        valIdx = 2;
+      } else {
+        return null;
+      }
     } else {
       return null;
     }

@@ -7,8 +7,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { Tracker, LogEntry, CATEGORIES, COLOR_MAP, DailyReflection, Milestone } from './types';
 import { loadData, saveTrackers, saveLogs, saveReflections, exportDataAsJson, importDataFromJson } from './utils/storage';
-import { importLogsFromCSV, parseCSV } from './utils/csvParser';
+import { importLogsFromCSV, parseCSV, ColumnMapping } from './utils/csvParser';
 import { AddTrackerModal } from './components/AddTrackerModal';
+import { CSVMappingModal } from './components/CSVMappingModal';
 import { TrackerCard } from './components/TrackerCard';
 import { TrackerAnalytics } from './components/TrackerAnalytics';
 import { LogHistory } from './components/LogHistory';
@@ -97,6 +98,9 @@ export default function App() {
   const [copiedTrackerName, setCopiedTrackerName] = useState<string | null>(null);
   const [csvImportStatus, setCsvImportStatus] = useState<'success' | 'error' | 'warning' | null>(null);
   const [csvImportMessage, setCsvImportMessage] = useState<string>('');
+  const [isCSVMappingModalOpen, setIsCSVMappingModalOpen] = useState(false);
+  const [pendingCSVHeaders, setPendingCSVHeaders] = useState<string[]>([]);
+  const [pendingCSVText, setPendingCSVText] = useState<string>('');
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
   const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
 
@@ -843,63 +847,51 @@ export default function App() {
           return;
         }
 
-        const headerRow = parsed[0];
-        let hasDate = false;
-        let hasTrackerName = false;
-        let hasValue = false;
-
-        for (const cell of headerRow) {
-          const h = cell.toLowerCase().trim();
-          if (/date|day/i.test(h)) hasDate = true;
-          else if (/tracker\s*name|tracker/i.test(h)) hasTrackerName = true;
-          else if (/value|amount|qty|count/i.test(h)) hasValue = true;
-        }
-
-        const missingHeaders = [];
-        if (!hasDate) missingHeaders.push('Date');
-        if (!hasTrackerName) missingHeaders.push('Tracker Name');
-        if (!hasValue) missingHeaders.push('Value');
-
-        if (missingHeaders.length > 0) {
+        if (parsed.length < 2) {
           setCsvImportStatus('error');
-          setCsvImportMessage(`Validation Error: Missing required column(s): ${missingHeaders.join(', ')}`);
+          setCsvImportMessage('Error: CSV must contain a header row and at least one data row.');
           const timer = setTimeout(() => {
             setCsvImportStatus(null);
             setCsvImportMessage('');
-          }, 6000);
+          }, 5000);
           return;
         }
 
-        const result = importLogsFromCSV(text, trackers);
-        if (result && result.importedCount > 0) {
-          setTrackers(result.trackers);
-          setLogs(result.logs);
-          saveTrackers(result.trackers);
-          saveLogs(result.logs);
-          
-          setCsvImportStatus('success');
-          setCsvImportMessage(`Successfully imported ${result.importedCount} logs!`);
-          
-          // Reset status after 5 seconds
-          const timer = setTimeout(() => {
-            setCsvImportStatus(null);
-            setCsvImportMessage('');
-          }, 5000);
-          return () => clearTimeout(timer);
-        } else {
-          setCsvImportStatus('error');
-          setCsvImportMessage('Import failed. No valid log rows were found in the CSV.');
-          
-          // Reset status after 5 seconds
-          const timer = setTimeout(() => {
-            setCsvImportStatus(null);
-            setCsvImportMessage('');
-          }, 5000);
-          return () => clearTimeout(timer);
-        }
+        const headerRow = parsed[0];
+        setPendingCSVHeaders(headerRow);
+        setPendingCSVText(text);
+        setIsCSVMappingModalOpen(true);
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleConfirmCSVMapping = (mapping: ColumnMapping) => {
+    const result = importLogsFromCSV(pendingCSVText, trackers, mapping);
+    if (result && result.importedCount > 0) {
+      setTrackers(result.trackers);
+      setLogs(result.logs);
+      saveTrackers(result.trackers);
+      saveLogs(result.logs);
+      
+      setCsvImportStatus('success');
+      setCsvImportMessage(`Successfully imported ${result.importedCount} logs!`);
+      
+      // Reset status after 5 seconds
+      const timer = setTimeout(() => {
+        setCsvImportStatus(null);
+        setCsvImportMessage('');
+      }, 5000);
+    } else {
+      setCsvImportStatus('error');
+      setCsvImportMessage('Import failed. No valid log rows were parsed or imported.');
+      
+      // Reset status after 5 seconds
+      const timer = setTimeout(() => {
+        setCsvImportStatus(null);
+        setCsvImportMessage('');
+      }, 5000);
+    }
   };
 
   // CSV Import backing trigger
@@ -2383,6 +2375,15 @@ export default function App() {
         isOpen={isAddTrackerOpen}
         onClose={() => setIsAddTrackerOpen(false)}
         onAdd={handleAddTracker}
+      />
+
+      {/* CSV Mapping Modal overlay */}
+      <CSVMappingModal
+        isOpen={isCSVMappingModalOpen}
+        onClose={() => setIsCSVMappingModalOpen(false)}
+        headers={pendingCSVHeaders}
+        csvText={pendingCSVText}
+        onConfirm={handleConfirmCSVMapping}
       />
     </div>
   );
