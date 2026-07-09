@@ -1344,6 +1344,41 @@ export default function App() {
                     )}
                   </label>
 
+                  {/* Persistent Quick Guide Badge with Hover Tooltip */}
+                  <div className="relative group inline-flex items-center">
+                    <div 
+                      className="flex items-center gap-1.5 bg-editorial-accent-light/20 hover:bg-editorial-accent-light/35 border border-editorial-dark/15 px-3 py-2 text-[10px] font-mono uppercase tracking-wider font-semibold text-editorial-dark/75 hover:text-editorial-dark transition-all cursor-help select-none"
+                    >
+                      <HelpCircle size={11} className="text-editorial-orange" />
+                      <span>Quick Guide</span>
+                    </div>
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 hidden group-hover:block z-[60] w-64 bg-editorial-dark text-white text-[10px] p-3 font-sans leading-normal rounded-none shadow-xl pointer-events-none normal-case">
+                      <div className="font-semibold text-editorial-orange mb-1.5 uppercase tracking-wider font-mono text-[9px]">CSV Header Requirement</div>
+                      <p className="mb-2 text-white/90 font-serif leading-normal">
+                        To avoid drag-and-drop or upload errors, ensure your CSV file includes these headers:
+                      </p>
+                      <div className="space-y-1 bg-white/5 p-2 border border-white/10 font-mono text-[9px] text-white">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 bg-editorial-orange" />
+                          <span><strong className="text-editorial-orange font-bold">Date</strong> <span className="text-white/60 text-[8px]">(e.g. YYYY-MM-DD)</span></span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 bg-editorial-orange" />
+                          <span><strong className="text-editorial-orange font-bold">Tracker Name</strong></span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 bg-editorial-orange" />
+                          <span><strong className="text-editorial-orange font-bold">Value</strong> <span className="text-white/60 text-[8px]">(numerical log value)</span></span>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-white/75 leading-relaxed font-sans">
+                        Don't worry if your columns are named differently—our smart Column Mapper will automatically open to help you align them!
+                      </p>
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-editorial-dark rotate-45 -translate-y-1" />
+                    </div>
+                  </div>
+
                   {/* CSV Help Popover Toggle */}
                   <button
                     type="button"
