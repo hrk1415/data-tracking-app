@@ -50,7 +50,8 @@ import {
   EyeOff,
   Copy,
   Check,
-  Search
+  Search,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -94,7 +95,7 @@ export default function App() {
   const [trackerSearchQuery, setTrackerSearchQuery] = useState('');
   const [showTrackerSearchDropdown, setShowTrackerSearchDropdown] = useState(false);
   const [copiedTrackerName, setCopiedTrackerName] = useState<string | null>(null);
-  const [csvImportStatus, setCsvImportStatus] = useState<'success' | 'error' | null>(null);
+  const [csvImportStatus, setCsvImportStatus] = useState<'success' | 'error' | 'warning' | null>(null);
   const [csvImportMessage, setCsvImportMessage] = useState<string>('');
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
   const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
@@ -867,7 +868,16 @@ export default function App() {
   const handleImportCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    processCSVFile(file);
+    if (file.name.endsWith('.csv')) {
+      processCSVFile(file);
+    } else {
+      setCsvImportStatus('warning');
+      setCsvImportMessage('Warning: Invalid file type. Please select a .csv file.');
+      const timer = setTimeout(() => {
+        setCsvImportStatus(null);
+        setCsvImportMessage('');
+      }, 5000);
+    }
     e.target.value = '';
   };
 
@@ -888,8 +898,8 @@ export default function App() {
       if (file.name.endsWith('.csv')) {
         processCSVFile(file);
       } else {
-        setCsvImportStatus('error');
-        setCsvImportMessage('Invalid file type. Please drop a .csv file.');
+        setCsvImportStatus('warning');
+        setCsvImportMessage('Warning: Invalid file type. Please drop a .csv file.');
         const timer = setTimeout(() => {
           setCsvImportStatus(null);
           setCsvImportMessage('');
@@ -1248,6 +1258,8 @@ export default function App() {
                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
                         : csvImportStatus === 'error'
                         ? 'bg-rose-500/10 border-rose-500/30 text-rose-700'
+                        : csvImportStatus === 'warning'
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-700'
                         : 'bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border-editorial-orange/20 text-editorial-orange'
                     }`}
                     title={csvImportStatus ? csvImportMessage : "Bulk-populate logs from an external CSV file (drag & drop supported)"}
@@ -1263,6 +1275,8 @@ export default function App() {
                           <CheckCircle2 size={14} className="text-emerald-600" />
                         ) : csvImportStatus === 'error' ? (
                           <X size={14} className="text-rose-600" />
+                        ) : csvImportStatus === 'warning' ? (
+                          <AlertTriangle size={14} className="text-amber-600" />
                         ) : (
                           <Upload size={14} className="text-editorial-orange" />
                         )}
@@ -1270,6 +1284,8 @@ export default function App() {
                           <span>Import Success!</span>
                         ) : csvImportStatus === 'error' ? (
                           <span>Import Error!</span>
+                        ) : csvImportStatus === 'warning' ? (
+                          <span>Invalid File!</span>
                         ) : (
                           <span>Import CSV Logs</span>
                         )}
@@ -1312,6 +1328,8 @@ export default function App() {
                         className={`absolute left-0 top-full mt-1.5 z-10 text-[10px] font-mono px-2 py-1 shadow-sm border ${
                           csvImportStatus === 'success'
                             ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                            : csvImportStatus === 'warning'
+                            ? 'text-amber-900 bg-amber-50 border-amber-200'
                             : 'text-rose-800 bg-rose-50 border-rose-200'
                         }`}
                       >
