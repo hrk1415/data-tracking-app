@@ -105,6 +105,7 @@ export default function App() {
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
   const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
   const [lastImportedLogIds, setLastImportedLogIds] = useState<string[]>([]);
+  const [isClearLogsConfirmOpen, setIsClearLogsConfirmOpen] = useState(false);
 
   // Reflection editor state
   const [reflectionInput, setReflectionInput] = useState<string>('');
@@ -921,6 +922,25 @@ export default function App() {
     }, 5000);
   };
 
+  const handleClearAllLogs = () => {
+    if (logs.length === 0) return;
+    
+    const count = logs.length;
+    setLogs([]);
+    saveLogs([]);
+    setLastImportedLogIds([]);
+    
+    setCsvImportStatus('warning');
+    setCsvImportMessage(`Cleared all logs: Deleted ${count} log entries across all trackers.`);
+    setIsClearLogsConfirmOpen(false);
+    
+    // Reset status after 5 seconds
+    setTimeout(() => {
+      setCsvImportStatus(null);
+      setCsvImportMessage('');
+    }, 5000);
+  };
+
   // CSV Import backing trigger
   const handleImportCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1384,6 +1404,25 @@ export default function App() {
                       >
                         <Trash2 size={13} className="text-rose-600" />
                         <span>Revert Import ({lastImportedLogIds.length})</span>
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Clear All Logs Button */}
+                  <AnimatePresence>
+                    {logs.length > 0 && (
+                      <motion.button
+                        id="clear-all-logs-button"
+                        type="button"
+                        initial={{ opacity: 0, scale: 0.95, x: -5 }}
+                        animate={{ opacity: 1, scale: 1, x: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, x: -5 }}
+                        onClick={() => setIsClearLogsConfirmOpen(true)}
+                        className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-700 hover:text-rose-800 px-3 py-2 text-xs font-mono uppercase tracking-wider font-semibold transition-all cursor-pointer"
+                        title="Delete all log entries across all trackers"
+                      >
+                        <Trash2 size={13} className="text-rose-600" />
+                        <span>Clear All Logs</span>
                       </motion.button>
                     )}
                   </AnimatePresence>
@@ -2503,6 +2542,84 @@ export default function App() {
         csvText={pendingCSVText}
         onConfirm={handleConfirmCSVMapping}
       />
+
+      {/* Clear Logs Confirmation Modal overlay */}
+      <AnimatePresence>
+        {isClearLogsConfirmOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsClearLogsConfirmOpen(false)}
+              className="absolute inset-0 bg-editorial-dark/40 backdrop-blur-sm"
+            />
+
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 15 }}
+              transition={{ duration: 0.25 }}
+              className="relative w-full max-w-md overflow-hidden rounded-none bg-editorial-bg border border-editorial-dark/15 shadow-2xl flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-editorial-dark/15 px-6 py-4 bg-rose-500/5">
+                <div className="flex items-center gap-2 text-rose-700">
+                  <AlertTriangle size={18} />
+                  <h3 className="font-serif text-base font-semibold tracking-tight">
+                    Confirm Action
+                  </h3>
+                </div>
+                <button
+                  id="close-clear-confirm-button"
+                  type="button"
+                  onClick={() => setIsClearLogsConfirmOpen(false)}
+                  className="text-editorial-dark/45 hover:text-editorial-dark transition-colors cursor-pointer"
+                  aria-label="Close modal"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 space-y-4">
+                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-800 text-xs p-3 font-sans italic flex items-center gap-2">
+                  <span className="font-bold">⚠️ Warning: This action is irreversible!</span>
+                </div>
+                <p className="text-xs text-editorial-dark/85 font-serif leading-relaxed">
+                  You are about to delete <strong className="text-editorial-dark font-semibold">{logs.length}</strong> log entries. This will permanently erase all data records, histories, and logs across every single tracker. 
+                </p>
+                <p className="text-xs text-editorial-dark/60 font-sans leading-relaxed">
+                  Your trackers themselves (the custom metrics you created) will not be deleted, but all recorded history of values and timestamps within them will be cleared.
+                </p>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 border-t border-editorial-dark/10 bg-editorial-dark/[0.02] px-6 py-4">
+                <button
+                  id="cancel-clear-logs-button"
+                  type="button"
+                  onClick={() => setIsClearLogsConfirmOpen(false)}
+                  className="rounded-none border border-editorial-dark/20 bg-editorial-bg px-4 py-2 text-xs font-mono uppercase tracking-wider text-editorial-dark hover:bg-editorial-accent-light/40 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  id="confirm-clear-logs-button"
+                  type="button"
+                  onClick={handleClearAllLogs}
+                  className="rounded-none bg-rose-600 text-white px-5 py-2 text-xs font-mono uppercase tracking-wider hover:bg-rose-700 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  <Trash2 size={13} />
+                  <span>Clear All Logs</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
