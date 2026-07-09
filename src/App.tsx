@@ -49,7 +49,8 @@ import {
   Eye,
   EyeOff,
   Copy,
-  Check
+  Check,
+  Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -89,6 +90,9 @@ export default function App() {
   const [isBackupSectionOpen, setIsBackupSectionOpen] = useState(false);
   const [showCSVHelpPopover, setShowCSVHelpPopover] = useState(false);
   const [copiedCSVExample, setCopiedCSVExample] = useState(false);
+  const [trackerSearchQuery, setTrackerSearchQuery] = useState('');
+  const [showTrackerSearchDropdown, setShowTrackerSearchDropdown] = useState(false);
+  const [copiedTrackerName, setCopiedTrackerName] = useState<string | null>(null);
   const [csvImportStatus, setCsvImportStatus] = useState<'success' | 'error' | null>(null);
   const [csvImportMessage, setCsvImportMessage] = useState<string>('');
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
@@ -958,6 +962,15 @@ export default function App() {
     });
   };
 
+  const handleCopyTrackerName = (name: string) => {
+    navigator.clipboard.writeText(name).then(() => {
+      setCopiedTrackerName(name);
+      setTimeout(() => {
+        setCopiedTrackerName(null);
+      }, 2000);
+    });
+  };
+
   // Date representation
   const formattedSelectedDate = useMemo(() => {
     if (!selectedDate) return '';
@@ -1073,6 +1086,121 @@ export default function App() {
                   <Download size={14} />
                   Export Logs (CSV)
                 </button>
+
+                {/* Tracker Mapping Search Bar */}
+                <div className="relative inline-flex items-center gap-1.5 shrink-0">
+                  <div className="relative flex items-center bg-editorial-bg border border-editorial-dark/20 hover:border-editorial-dark/45 focus-within:border-editorial-orange text-editorial-dark transition-all">
+                    <span className="pl-3 pr-1 text-editorial-dark/40 flex items-center justify-center">
+                      <Search size={12} />
+                    </span>
+                    <input
+                      type="text"
+                      id="tracker-mapping-search-input"
+                      value={trackerSearchQuery}
+                      onChange={(e) => {
+                        setTrackerSearchQuery(e.target.value);
+                        setShowTrackerSearchDropdown(true);
+                      }}
+                      onFocus={() => setShowTrackerSearchDropdown(true)}
+                      placeholder="Search trackers for CSV..."
+                      className="bg-transparent border-0 py-2 pr-8 pl-1 text-xs font-sans placeholder-editorial-dark/35 outline-none w-44 md:w-52 shrink-0 rounded-none focus:ring-0 focus:outline-none"
+                    />
+                    {trackerSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackerSearchQuery('');
+                          setShowTrackerSearchDropdown(false);
+                        }}
+                        className="absolute right-2 text-editorial-dark/40 hover:text-editorial-orange p-1 flex items-center justify-center cursor-pointer transition-colors"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  <AnimatePresence>
+                    {showTrackerSearchDropdown && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.12 }}
+                        className="absolute right-0 bottom-full mb-3 z-50 w-72 bg-editorial-bg border border-editorial-dark/15 shadow-xl p-4 text-left font-sans select-none"
+                      >
+                        {/* Triangle decorator */}
+                        <div className="absolute right-24 top-full w-3 h-3 bg-editorial-bg border-r border-b border-editorial-dark/15 rotate-45 -translate-y-1.5" />
+
+                        <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-2 mb-2">
+                          <span className="font-serif font-semibold text-xs text-editorial-dark flex items-center gap-1.5">
+                            <Search size={12} className="text-editorial-orange" />
+                            Verify Tracker Names
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowTrackerSearchDropdown(false)}
+                            className="text-editorial-dark/40 hover:text-editorial-dark p-0.5 transition-colors cursor-pointer"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+
+                        <div className="max-h-48 overflow-y-auto space-y-1.5 pr-0.5 scrollbar-thin">
+                          {(() => {
+                            const filtered = trackers.filter(t => 
+                              t.name.toLowerCase().includes(trackerSearchQuery.toLowerCase()) ||
+                              (t.unit && t.unit.toLowerCase().includes(trackerSearchQuery.toLowerCase())) ||
+                              t.category.toLowerCase().includes(trackerSearchQuery.toLowerCase())
+                            );
+
+                            if (filtered.length === 0) {
+                              return (
+                                <p className="text-[10px] text-editorial-dark/50 italic py-2 text-center">
+                                  No matching active trackers found.
+                                </p>
+                              );
+                            }
+
+                            return filtered.map(t => {
+                              const isCopied = copiedTrackerName === t.name;
+                              return (
+                                <div
+                                  key={t.id}
+                                  onClick={() => handleCopyTrackerName(t.name)}
+                                  className="group flex items-center justify-between p-1.5 hover:bg-editorial-orange-light/5 border border-transparent hover:border-editorial-orange/15 cursor-pointer transition-all"
+                                  title="Click to copy exact tracker name"
+                                >
+                                  <div className="flex flex-col min-w-0 pr-2">
+                                    <span className="font-sans font-medium text-xs text-editorial-dark truncate">
+                                      {t.name}
+                                    </span>
+                                    <span className="font-mono text-[9px] text-editorial-dark/50 flex items-center gap-1">
+                                      <span className="capitalize">{t.category}</span>
+                                      {t.unit && <span>• {t.unit}</span>}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 p-1 bg-editorial-dark/[0.02] border border-editorial-dark/10 text-editorial-dark/40 hover:text-editorial-orange hover:bg-white transition-all flex items-center justify-center"
+                                  >
+                                    {isCopied ? (
+                                      <Check size={11} className="text-emerald-600 font-bold" />
+                                    ) : (
+                                      <Copy size={11} className="opacity-60 group-hover:opacity-100 transition-opacity" />
+                                    )}
+                                  </button>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                        <p className="text-[9px] text-editorial-dark/40 mt-2.5 pt-1.5 border-t border-editorial-dark/5 leading-tight text-center">
+                          Click any tracker row to copy the exact name required by your CSV column formatting.
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
 
                  {/* Import CSV Logs Button & Format Helper Wrapper */}
                 <div className="relative inline-flex items-center gap-1.5 shrink-0">
