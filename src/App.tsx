@@ -85,6 +85,7 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'analytics' | 'history' | 'manage'>('dashboard');
   const [isAddTrackerOpen, setIsAddTrackerOpen] = useState(false);
   const [isBackupSectionOpen, setIsBackupSectionOpen] = useState(false);
+  const [showCSVHelpPopover, setShowCSVHelpPopover] = useState(false);
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
   const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
 
@@ -1015,21 +1016,96 @@ export default function App() {
                   Export Logs (CSV)
                 </button>
 
-                {/* Import CSV Logs Button */}
-                <label
-                  id="import-csv-logs-button"
-                  className="flex items-center gap-1.5 bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border border-editorial-orange/20 text-editorial-orange font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer"
-                  title="Bulk-populate logs from an external CSV file"
-                >
-                  <Upload size={14} className="text-editorial-orange" />
-                  Import CSV Logs
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={handleImportCSVFile}
-                    className="hidden"
-                  />
-                </label>
+                {/* Import CSV Logs Button & Format Helper Wrapper */}
+                <div className="relative inline-flex items-center gap-1.5 shrink-0">
+                  <label
+                    id="import-csv-logs-button"
+                    className="flex items-center gap-1.5 bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border border-editorial-orange/20 text-editorial-orange font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer"
+                    title="Bulk-populate logs from an external CSV file"
+                  >
+                    <Upload size={14} className="text-editorial-orange" />
+                    Import CSV Logs
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={handleImportCSVFile}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {/* CSV Help Popover Toggle */}
+                  <button
+                    type="button"
+                    id="csv-format-help-button"
+                    onClick={() => setShowCSVHelpPopover(!showCSVHelpPopover)}
+                    className={`flex items-center justify-center w-8 h-8 border transition-all cursor-pointer ${
+                      showCSVHelpPopover
+                        ? 'bg-editorial-orange border-editorial-orange text-white'
+                        : 'bg-editorial-orange-light/5 hover:bg-editorial-orange-light/15 border-editorial-orange/20 text-editorial-orange'
+                    }`}
+                    title="Expected CSV Column Format Help"
+                  >
+                    <Info size={14} />
+                  </button>
+
+                  <AnimatePresence>
+                    {showCSVHelpPopover && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 bottom-full mb-3 z-50 w-80 bg-editorial-bg border border-editorial-dark/15 shadow-xl p-5 text-left font-sans select-none"
+                      >
+                        {/* Triangle decorator */}
+                        <div className="absolute right-2.5 top-full w-3 h-3 bg-editorial-bg border-r border-b border-editorial-dark/15 rotate-45 -translate-y-1.5" />
+                        
+                        <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-2 mb-3">
+                          <span className="font-serif font-semibold text-xs text-editorial-dark flex items-center gap-1.5">
+                            <Info size={13} className="text-editorial-orange animate-pulse" />
+                            Expected CSV Format
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowCSVHelpPopover(false)}
+                            className="text-editorial-dark/40 hover:text-editorial-dark p-0.5 transition-colors cursor-pointer"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+
+                        <p className="text-[11px] text-editorial-dark/75 leading-relaxed mb-3">
+                          To successfully import bulk entries, your spreadsheet/CSV file must include the following column headers:
+                        </p>
+
+                        <div className="space-y-2 mb-3">
+                          <div className="flex items-start gap-1.5 text-[11px]">
+                            <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark text-[10px]">Date</span>
+                            <span className="text-editorial-dark/65">— Log day <span className="font-mono text-[9px]">(YYYY-MM-DD)</span></span>
+                          </div>
+                          <div className="flex items-start gap-1.5 text-[11px]">
+                            <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark text-[10px]">Tracker Name</span>
+                            <span className="text-editorial-dark/65">— Name of tracker</span>
+                          </div>
+                          <div className="flex items-start gap-1.5 text-[11px]">
+                            <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark text-[10px]">Value</span>
+                            <span className="text-editorial-dark/65">— Numerical log entry value</span>
+                          </div>
+                          <div className="pt-1.5 border-t border-editorial-dark/5">
+                            <span className="text-[9px] font-mono text-editorial-orange/80 uppercase font-bold tracking-wider">Optional Columns:</span>
+                            <p className="text-[10px] text-editorial-dark/50 leading-tight mt-0.5">
+                              Category, Unit, Goal, Notes, Logged At
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="bg-editorial-dark/[0.03] border border-editorial-dark/10 p-2 font-mono text-[9px] text-editorial-dark/70 rounded-none leading-relaxed overflow-x-auto whitespace-pre">
+                          {"Date,Tracker Name,Value,Notes\n2026-07-09,Water Intake,8,Target met!\n2026-07-09,Meditation,15,Focused session"}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
 
                 {/* Import File Button */}
                 <label className="flex items-center gap-1.5 bg-editorial-bg hover:bg-editorial-accent-light border border-editorial-dark/20 text-editorial-dark font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer">
