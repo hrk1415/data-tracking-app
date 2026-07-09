@@ -53,7 +53,8 @@ import {
   Check,
   Search,
   AlertTriangle,
-  HelpCircle
+  HelpCircle,
+  Filter
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -106,6 +107,7 @@ export default function App() {
   const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
   const [lastImportedLogIds, setLastImportedLogIds] = useState<string[]>([]);
   const [isClearLogsConfirmOpen, setIsClearLogsConfirmOpen] = useState(false);
+  const [csvRowFilterQuery, setCsvRowFilterQuery] = useState('');
 
   // Reflection editor state
   const [reflectionInput, setReflectionInput] = useState<string>('');
@@ -861,8 +863,41 @@ export default function App() {
         }
 
         const headerRow = parsed[0];
+        let finalCSVText = text;
+
+        if (csvRowFilterQuery.trim()) {
+          const query = csvRowFilterQuery.toLowerCase().trim();
+          const dataRows = parsed.slice(1).filter(row => 
+            row.some(cell => cell.toLowerCase().includes(query))
+          );
+          if (dataRows.length === 0) {
+            setCsvImportStatus('error');
+            setCsvImportMessage(`Error: No rows match filter "${csvRowFilterQuery}".`);
+            const timer = setTimeout(() => {
+              setCsvImportStatus(null);
+              setCsvImportMessage('');
+            }, 5000);
+            return;
+          }
+          const filteredParsed = [headerRow, ...dataRows];
+          
+          // Rebuild the filtered CSV text
+          const rebuildCSVText = (rows: string[][]): string => {
+            return rows.map(r => 
+              r.map(cell => {
+                const stringified = String(cell);
+                if (stringified.includes(',') || stringified.includes('"') || stringified.includes('\n') || stringified.includes('\r')) {
+                  return `"${stringified.replace(/"/g, '""')}"`;
+                }
+                return stringified;
+              }).join(',')
+            ).join('\n');
+          };
+          finalCSVText = rebuildCSVText(filteredParsed);
+        }
+
         setPendingCSVHeaders(headerRow);
-        setPendingCSVText(text);
+        setPendingCSVText(finalCSVText);
         setIsCSVMappingModalOpen(true);
       }
     };
@@ -882,8 +917,9 @@ export default function App() {
       const importedIds = result.logs.map(l => l.id);
       setLastImportedLogIds(importedIds);
       
+      const filterSuffix = csvRowFilterQuery.trim() ? ` (filtered by "${csvRowFilterQuery.trim()}")` : '';
       setCsvImportStatus('success');
-      setCsvImportMessage(`Successfully imported ${result.importedCount} logs!`);
+      setCsvImportMessage(`Successfully imported ${result.importedCount} logs${filterSuffix}!`);
       
       // Reset status after 5 seconds
       const timer = setTimeout(() => {
@@ -1319,6 +1355,34 @@ export default function App() {
                       </motion.div>
                     )}
                   </AnimatePresence>
+                </div>
+
+                {/* CSV Row Filter Input */}
+                <div className="relative inline-flex items-center gap-1.5 shrink-0">
+                  <div className="relative flex items-center bg-editorial-bg border border-editorial-dark/20 hover:border-editorial-dark/45 focus-within:border-editorial-orange text-editorial-dark transition-all">
+                    <span className="pl-3 pr-1 text-editorial-dark/40 flex items-center justify-center">
+                      <Filter size={12} className="text-editorial-orange" />
+                    </span>
+                    <input
+                      type="text"
+                      id="csv-row-filter-input"
+                      value={csvRowFilterQuery}
+                      onChange={(e) => setCsvRowFilterQuery(e.target.value)}
+                      placeholder="Filter CSV rows..."
+                      className="bg-transparent border-0 py-2 pr-8 pl-1 text-xs font-sans placeholder-editorial-dark/35 outline-none w-44 md:w-52 shrink-0 rounded-none focus:ring-0 focus:outline-none"
+                      title="Optionally filter CSV rows by keyword (e.g. tracker name, category, etc.) before importing"
+                    />
+                    {csvRowFilterQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setCsvRowFilterQuery('')}
+                        className="absolute right-2 text-editorial-dark/40 hover:text-editorial-orange p-1 flex items-center justify-center cursor-pointer transition-colors"
+                        title="Clear filter query"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                  {/* Import CSV Logs Button & Format Helper Wrapper */}
