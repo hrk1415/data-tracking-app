@@ -86,6 +86,8 @@ export default function App() {
   const [isAddTrackerOpen, setIsAddTrackerOpen] = useState(false);
   const [isBackupSectionOpen, setIsBackupSectionOpen] = useState(false);
   const [showCSVHelpPopover, setShowCSVHelpPopover] = useState(false);
+  const [csvImportStatus, setCsvImportStatus] = useState<'success' | 'error' | null>(null);
+  const [csvImportMessage, setCsvImportMessage] = useState<string>('');
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
   const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
 
@@ -831,10 +833,26 @@ export default function App() {
           setLogs(result.logs);
           saveTrackers(result.trackers);
           saveLogs(result.logs);
-          alert(`CSV imported successfully! Parsed and loaded ${result.importedCount} logs, dynamically setting up trackers.`);
-          setIsBackupSectionOpen(false);
+          
+          setCsvImportStatus('success');
+          setCsvImportMessage(`Successfully imported ${result.importedCount} logs!`);
+          
+          // Reset status after 5 seconds
+          const timer = setTimeout(() => {
+            setCsvImportStatus(null);
+            setCsvImportMessage('');
+          }, 5000);
+          return () => clearTimeout(timer);
         } else {
-          alert('Failed to import CSV. Please make sure the file contains at least headers and some valid data rows with Date, Tracker Name, and Value columns.');
+          setCsvImportStatus('error');
+          setCsvImportMessage('Import failed. Invalid CSV format or missing headers.');
+          
+          // Reset status after 5 seconds
+          const timer = setTimeout(() => {
+            setCsvImportStatus(null);
+            setCsvImportMessage('');
+          }, 5000);
+          return () => clearTimeout(timer);
         }
       }
     };
@@ -1043,15 +1061,33 @@ export default function App() {
                   Export Logs (CSV)
                 </button>
 
-                {/* Import CSV Logs Button & Format Helper Wrapper */}
+                 {/* Import CSV Logs Button & Format Helper Wrapper */}
                 <div className="relative inline-flex items-center gap-1.5 shrink-0">
                   <label
                     id="import-csv-logs-button"
-                    className="flex items-center gap-1.5 bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border border-editorial-orange/20 text-editorial-orange font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer"
-                    title="Bulk-populate logs from an external CSV file"
+                    className={`flex items-center gap-1.5 font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer ${
+                      csvImportStatus === 'success'
+                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-700'
+                        : csvImportStatus === 'error'
+                        ? 'bg-rose-500/10 border border-rose-500/30 text-rose-700'
+                        : 'bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border border-editorial-orange/20 text-editorial-orange'
+                    }`}
+                    title={csvImportStatus ? csvImportMessage : "Bulk-populate logs from an external CSV file"}
                   >
-                    <Upload size={14} className="text-editorial-orange" />
-                    Import CSV Logs
+                    {csvImportStatus === 'success' ? (
+                      <CheckCircle2 size={14} className="text-emerald-600" />
+                    ) : csvImportStatus === 'error' ? (
+                      <X size={14} className="text-rose-600" />
+                    ) : (
+                      <Upload size={14} className="text-editorial-orange" />
+                    )}
+                    {csvImportStatus === 'success' ? (
+                      <span>Import Success!</span>
+                    ) : csvImportStatus === 'error' ? (
+                      <span>Import Error!</span>
+                    ) : (
+                      <span>Import CSV Logs</span>
+                    )}
                     <input
                       type="file"
                       accept=".csv"
@@ -1074,6 +1110,23 @@ export default function App() {
                   >
                     <Info size={14} />
                   </button>
+
+                  <AnimatePresence>
+                    {csvImportStatus && (
+                      <motion.span
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -10 }}
+                        className={`absolute left-0 top-full mt-1.5 z-10 text-[10px] font-mono px-2 py-1 shadow-sm border ${
+                          csvImportStatus === 'success'
+                            ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                            : 'text-rose-800 bg-rose-50 border-rose-200'
+                        }`}
+                      >
+                        {csvImportMessage}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
 
                   <AnimatePresence>
                     {showCSVHelpPopover && (
