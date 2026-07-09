@@ -90,6 +90,7 @@ export default function App() {
   const [isBackupSectionOpen, setIsBackupSectionOpen] = useState(false);
   const [showCSVHelpPopover, setShowCSVHelpPopover] = useState(false);
   const [copiedCSVExample, setCopiedCSVExample] = useState(false);
+  const [isDraggingCSV, setIsDraggingCSV] = useState(false);
   const [trackerSearchQuery, setTrackerSearchQuery] = useState('');
   const [showTrackerSearchDropdown, setShowTrackerSearchDropdown] = useState(false);
   const [copiedTrackerName, setCopiedTrackerName] = useState<string | null>(null);
@@ -825,11 +826,7 @@ export default function App() {
     e.target.value = '';
   };
 
-  // CSV Import backing trigger
-  const handleImportCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processCSVFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result;
@@ -864,7 +861,42 @@ export default function App() {
       }
     };
     reader.readAsText(file);
+  };
+
+  // CSV Import backing trigger
+  const handleImportCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processCSVFile(file);
     e.target.value = '';
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    setIsDraggingCSV(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDraggingCSV(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    setIsDraggingCSV(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      if (file.name.endsWith('.csv')) {
+        processCSVFile(file);
+      } else {
+        setCsvImportStatus('error');
+        setCsvImportMessage('Invalid file type. Please drop a .csv file.');
+        const timer = setTimeout(() => {
+          setCsvImportStatus(null);
+          setCsvImportMessage('');
+        }, 5000);
+        return () => clearTimeout(timer);
+      }
+    }
   };
 
   const handleExportData = () => {
@@ -1206,28 +1238,42 @@ export default function App() {
                 <div className="relative inline-flex items-center gap-1.5 shrink-0">
                   <label
                     id="import-csv-logs-button"
-                    className={`flex items-center gap-1.5 font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer ${
-                      csvImportStatus === 'success'
-                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-700'
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`relative flex items-center gap-1.5 font-semibold px-4 py-2 rounded-none text-xs transition-all cursor-pointer select-none border ${
+                      isDraggingCSV
+                        ? 'bg-editorial-orange-light/20 border-dashed border-editorial-orange text-editorial-orange scale-105 shadow-md'
+                        : csvImportStatus === 'success'
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
                         : csvImportStatus === 'error'
-                        ? 'bg-rose-500/10 border border-rose-500/30 text-rose-700'
-                        : 'bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border border-editorial-orange/20 text-editorial-orange'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-700'
+                        : 'bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border-editorial-orange/20 text-editorial-orange'
                     }`}
-                    title={csvImportStatus ? csvImportMessage : "Bulk-populate logs from an external CSV file"}
+                    title={csvImportStatus ? csvImportMessage : "Bulk-populate logs from an external CSV file (drag & drop supported)"}
                   >
-                    {csvImportStatus === 'success' ? (
-                      <CheckCircle2 size={14} className="text-emerald-600" />
-                    ) : csvImportStatus === 'error' ? (
-                      <X size={14} className="text-rose-600" />
+                    {isDraggingCSV ? (
+                      <>
+                        <Upload size={14} className="text-editorial-orange animate-bounce" />
+                        <span>Drop CSV Here!</span>
+                      </>
                     ) : (
-                      <Upload size={14} className="text-editorial-orange" />
-                    )}
-                    {csvImportStatus === 'success' ? (
-                      <span>Import Success!</span>
-                    ) : csvImportStatus === 'error' ? (
-                      <span>Import Error!</span>
-                    ) : (
-                      <span>Import CSV Logs</span>
+                      <>
+                        {csvImportStatus === 'success' ? (
+                          <CheckCircle2 size={14} className="text-emerald-600" />
+                        ) : csvImportStatus === 'error' ? (
+                          <X size={14} className="text-rose-600" />
+                        ) : (
+                          <Upload size={14} className="text-editorial-orange" />
+                        )}
+                        {csvImportStatus === 'success' ? (
+                          <span>Import Success!</span>
+                        ) : csvImportStatus === 'error' ? (
+                          <span>Import Error!</span>
+                        ) : (
+                          <span>Import CSV Logs</span>
+                        )}
+                      </>
                     )}
                     <input
                       type="file"
@@ -1235,6 +1281,11 @@ export default function App() {
                       onChange={handleImportCSVFile}
                       className="hidden"
                     />
+                    
+                    {/* Transparent drag cover to prevent child elements from intercepting drag events and causing flicker */}
+                    {isDraggingCSV && (
+                      <div className="absolute inset-0 z-10 pointer-events-none" />
+                    )}
                   </label>
 
                   {/* CSV Help Popover Toggle */}
