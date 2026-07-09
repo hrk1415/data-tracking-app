@@ -52,7 +52,8 @@ import {
   Copy,
   Check,
   Search,
-  AlertTriangle
+  AlertTriangle,
+  HelpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -1408,16 +1409,45 @@ export default function App() {
                         </p>
 
                         <div className="space-y-2 mb-3">
-                          <div className="flex items-start gap-1.5 text-[11px]">
+                          <div className="flex items-center gap-1.5 text-[11px] relative overflow-visible">
                             <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark text-[10px]">Date</span>
+                            <div className="group relative inline-flex items-center">
+                              <HelpCircle size={11} className="text-editorial-dark/40 hover:text-editorial-orange cursor-help transition-colors" />
+                              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-[60] w-64 bg-editorial-dark text-white text-[10px] p-2.5 font-sans leading-normal rounded-none shadow-xl pointer-events-none normal-case">
+                                <div className="font-semibold text-editorial-orange mb-1">Date Examples:</div>
+                                Supports formats like <span className="font-mono text-white/90 font-semibold">2026-07-09</span> (YYYY-MM-DD), <span className="font-mono text-white/90 font-semibold">07/09/2026</span> (MM/DD/YYYY), or <span className="font-mono text-white/90 font-semibold">2026-07-09 14:30</span>.
+                                <div className="absolute top-full left-2 w-2 h-2 bg-editorial-dark rotate-45 -translate-y-1" />
+                              </div>
+                            </div>
                             <span className="text-editorial-dark/65">— Log day <span className="font-mono text-[9px]">(YYYY-MM-DD)</span></span>
                           </div>
-                          <div className="flex items-start gap-1.5 text-[11px]">
+                          <div className="flex items-center gap-1.5 text-[11px] relative overflow-visible">
                             <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark text-[10px]">Tracker Name</span>
+                            <div className="group relative inline-flex items-center">
+                              <HelpCircle size={11} className="text-editorial-dark/40 hover:text-editorial-orange cursor-help transition-colors" />
+                              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-[60] w-64 bg-editorial-dark text-white text-[10px] p-2.5 font-sans leading-normal rounded-none shadow-xl pointer-events-none normal-case">
+                                <div className="font-semibold text-editorial-orange mb-1">Tracker Name Example:</div>
+                                Must exactly match your active trackers. For example, use <span className="font-mono text-white/90 font-semibold">"Water Intake"</span> or <span className="font-mono text-white/90 font-semibold">"Meditation"</span>. Case-insensitive when smart format scan is active.
+                                <div className="absolute top-full left-2 w-2 h-2 bg-editorial-dark rotate-45 -translate-y-1" />
+                              </div>
+                            </div>
                             <span className="text-editorial-dark/65">— Name of tracker</span>
                           </div>
-                          <div className="flex items-start gap-1.5 text-[11px]">
+                          <div className="flex items-center gap-1.5 text-[11px] relative overflow-visible">
                             <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark text-[10px]">Value</span>
+                            <div className="group relative inline-flex items-center">
+                              <HelpCircle size={11} className="text-editorial-dark/40 hover:text-editorial-orange cursor-help transition-colors" />
+                              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-[60] w-64 bg-editorial-dark text-white text-[10px] p-2.5 font-sans leading-normal rounded-none shadow-xl pointer-events-none normal-case">
+                                <div className="font-semibold text-editorial-orange mb-1">Value Examples by Tracker Type:</div>
+                                <ul className="space-y-1 list-disc list-inside">
+                                  <li><span className="font-serif">Hydration</span>: <span className="font-mono text-white/90 font-semibold">8</span> (cups) or <span className="font-mono text-white/90 font-semibold">250</span> (ml)</li>
+                                  <li><span className="font-serif">Sleep Quality</span>: <span className="font-mono text-white/90 font-semibold">7.5</span> (hours)</li>
+                                  <li><span className="font-serif">Meditation</span>: <span className="font-mono text-white/90 font-semibold">15</span> (minutes)</li>
+                                  <li><span className="font-serif">Mood Index</span>: <span className="font-mono text-white/90 font-semibold">4</span> (scale of 1 to 5)</li>
+                                </ul>
+                                <div className="absolute top-full left-2 w-2 h-2 bg-editorial-dark rotate-45 -translate-y-1" />
+                              </div>
+                            </div>
                             <span className="text-editorial-dark/65">— Numerical log entry value</span>
                           </div>
                           <div className="pt-1.5 border-t border-editorial-dark/5">
