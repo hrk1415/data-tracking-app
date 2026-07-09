@@ -1283,7 +1283,7 @@ export default function App() {
                     onDrop={handleDrop}
                     className={`relative flex items-center gap-1.5 font-semibold px-4 py-2 rounded-none text-xs transition-all cursor-pointer select-none border ${
                       isDraggingCSV
-                        ? 'bg-editorial-orange-light/20 border-dashed border-editorial-orange text-editorial-orange scale-105 shadow-md'
+                        ? 'bg-editorial-orange border-editorial-orange text-white scale-105 shadow-md'
                         : csvImportStatus === 'success'
                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
                         : csvImportStatus === 'error'
@@ -1294,33 +1294,26 @@ export default function App() {
                     }`}
                     title={csvImportStatus ? csvImportMessage : "Bulk-populate logs from an external CSV file (drag & drop supported)"}
                   >
-                    {isDraggingCSV ? (
-                      <>
-                        <Upload size={14} className="text-editorial-orange animate-bounce" />
-                        <span>Drop CSV Here!</span>
-                      </>
-                    ) : (
-                      <>
-                        {csvImportStatus === 'success' ? (
-                          <CheckCircle2 size={14} className="text-emerald-600" />
-                        ) : csvImportStatus === 'error' ? (
-                          <X size={14} className="text-rose-600" />
-                        ) : csvImportStatus === 'warning' ? (
-                          <AlertTriangle size={14} className="text-amber-600" />
-                        ) : (
-                          <Upload size={14} className="text-editorial-orange" />
-                        )}
-                        {csvImportStatus === 'success' ? (
-                          <span>Import Success!</span>
-                        ) : csvImportStatus === 'error' ? (
-                          <span>Import Error!</span>
-                        ) : csvImportStatus === 'warning' ? (
-                          <span>Invalid File!</span>
-                        ) : (
-                          <span>Import CSV Logs</span>
-                        )}
-                      </>
-                    )}
+                    <>
+                      {csvImportStatus === 'success' ? (
+                        <CheckCircle2 size={14} className="text-emerald-600" />
+                      ) : csvImportStatus === 'error' ? (
+                        <X size={14} className="text-rose-600" />
+                      ) : csvImportStatus === 'warning' ? (
+                        <AlertTriangle size={14} className="text-amber-600" />
+                      ) : (
+                        <Upload size={14} className="text-editorial-orange" />
+                      )}
+                      {csvImportStatus === 'success' ? (
+                        <span>Import Success!</span>
+                      ) : csvImportStatus === 'error' ? (
+                        <span>Import Error!</span>
+                      ) : csvImportStatus === 'warning' ? (
+                        <span>Invalid File!</span>
+                      ) : (
+                        <span>Import CSV Logs</span>
+                      )}
+                    </>
                     <input
                       type="file"
                       accept=".csv"
@@ -1328,6 +1321,22 @@ export default function App() {
                       className="hidden"
                     />
                     
+                    {/* Visual Overlay for Drag & Drop Action */}
+                    <AnimatePresence>
+                      {isDraggingCSV && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute inset-0 z-20 bg-editorial-orange text-white flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-center px-4 py-2 border border-dashed border-white pointer-events-none"
+                        >
+                          <Upload size={13} className="animate-bounce" />
+                          <span>Drag & Drop File Here</span>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
                     {/* Transparent drag cover to prevent child elements from intercepting drag events and causing flicker */}
                     {isDraggingCSV && (
                       <div className="absolute inset-0 z-10 pointer-events-none" />
