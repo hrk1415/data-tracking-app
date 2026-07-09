@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { Tracker, LogEntry, CATEGORIES, COLOR_MAP, DailyReflection, Milestone } from './types';
 import { loadData, saveTrackers, saveLogs, saveReflections, exportDataAsJson, importDataFromJson } from './utils/storage';
-import { importLogsFromCSV } from './utils/csvParser';
+import { importLogsFromCSV, parseCSV } from './utils/csvParser';
 import { AddTrackerModal } from './components/AddTrackerModal';
 import { TrackerCard } from './components/TrackerCard';
 import { TrackerAnalytics } from './components/TrackerAnalytics';
@@ -832,6 +832,44 @@ export default function App() {
     reader.onload = (event) => {
       const text = event.target?.result;
       if (typeof text === 'string') {
+        const parsed = parseCSV(text);
+        if (parsed.length === 0) {
+          setCsvImportStatus('error');
+          setCsvImportMessage('Error: CSV file is empty.');
+          const timer = setTimeout(() => {
+            setCsvImportStatus(null);
+            setCsvImportMessage('');
+          }, 5000);
+          return;
+        }
+
+        const headerRow = parsed[0];
+        let hasDate = false;
+        let hasTrackerName = false;
+        let hasValue = false;
+
+        for (const cell of headerRow) {
+          const h = cell.toLowerCase().trim();
+          if (/date|day/i.test(h)) hasDate = true;
+          else if (/tracker\s*name|tracker/i.test(h)) hasTrackerName = true;
+          else if (/value|amount|qty|count/i.test(h)) hasValue = true;
+        }
+
+        const missingHeaders = [];
+        if (!hasDate) missingHeaders.push('Date');
+        if (!hasTrackerName) missingHeaders.push('Tracker Name');
+        if (!hasValue) missingHeaders.push('Value');
+
+        if (missingHeaders.length > 0) {
+          setCsvImportStatus('error');
+          setCsvImportMessage(`Validation Error: Missing required column(s): ${missingHeaders.join(', ')}`);
+          const timer = setTimeout(() => {
+            setCsvImportStatus(null);
+            setCsvImportMessage('');
+          }, 6000);
+          return;
+        }
+
         const result = importLogsFromCSV(text, trackers);
         if (result && result.importedCount > 0) {
           setTrackers(result.trackers);
@@ -850,7 +888,7 @@ export default function App() {
           return () => clearTimeout(timer);
         } else {
           setCsvImportStatus('error');
-          setCsvImportMessage('Import failed. Invalid CSV format or missing headers.');
+          setCsvImportMessage('Import failed. No valid log rows were found in the CSV.');
           
           // Reset status after 5 seconds
           const timer = setTimeout(() => {
