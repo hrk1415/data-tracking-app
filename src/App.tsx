@@ -900,6 +900,33 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadCSVTemplate = () => {
+    const headers = ['Date', 'Tracker Name', 'Value', 'Category', 'Unit', 'Goal', 'Notes'];
+    const sampleRows = [
+      ['2026-07-09', 'Water Intake', '8', 'Health', 'Glasses', '8', 'Target met!'],
+      ['2026-07-09', 'Meditation', '15', 'Mindfulness', 'Minutes', '10', 'Focused session'],
+      ['2026-07-09', 'Steps', '10000', 'Fitness', 'Steps', '10000', 'Daily target met!']
+    ];
+    
+    const csvContent = [
+      headers.join(','),
+      ...sampleRows.map(row => row.map(val => {
+        if (val.includes(',') || val.includes('"') || val.includes('\n') || val.includes('\r')) {
+          return `"${val.replace(/"/g, '""')}"`;
+        }
+        return val;
+      }).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'tracker_logs_template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Date representation
   const formattedSelectedDate = useMemo(() => {
     if (!selectedDate) return '';
@@ -1102,6 +1129,17 @@ export default function App() {
                         <div className="bg-editorial-dark/[0.03] border border-editorial-dark/10 p-2 font-mono text-[9px] text-editorial-dark/70 rounded-none leading-relaxed overflow-x-auto whitespace-pre">
                           {"Date,Tracker Name,Value,Notes\n2026-07-09,Water Intake,8,Target met!\n2026-07-09,Meditation,15,Focused session"}
                         </div>
+
+                        <button
+                          type="button"
+                          id="download-csv-template-button"
+                          onClick={handleDownloadCSVTemplate}
+                          className="mt-3.5 w-full flex items-center justify-center gap-2 bg-editorial-orange text-white hover:bg-editorial-orange/90 font-semibold py-2 rounded-none text-xs transition-colors cursor-pointer"
+                          title="Download a starter CSV file with sample logs and correct headers"
+                        >
+                          <Download size={13} />
+                          Download Sample Template (.csv)
+                        </button>
                       </motion.div>
                     )}
                   </AnimatePresence>
