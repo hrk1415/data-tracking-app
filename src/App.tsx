@@ -47,7 +47,9 @@ import {
   Flag,
   Clock,
   Eye,
-  EyeOff
+  EyeOff,
+  Copy,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -86,6 +88,7 @@ export default function App() {
   const [isAddTrackerOpen, setIsAddTrackerOpen] = useState(false);
   const [isBackupSectionOpen, setIsBackupSectionOpen] = useState(false);
   const [showCSVHelpPopover, setShowCSVHelpPopover] = useState(false);
+  const [copiedCSVExample, setCopiedCSVExample] = useState(false);
   const [csvImportStatus, setCsvImportStatus] = useState<'success' | 'error' | null>(null);
   const [csvImportMessage, setCsvImportMessage] = useState<string>('');
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
@@ -945,6 +948,16 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const handleCopyCSVExample = () => {
+    const exampleText = "Date,Tracker Name,Value,Notes\n2026-07-09,Water Intake,8,Target met!\n2026-07-09,Meditation,15,Focused session";
+    navigator.clipboard.writeText(exampleText).then(() => {
+      setCopiedCSVExample(true);
+      setTimeout(() => {
+        setCopiedCSVExample(false);
+      }, 2000);
+    });
+  };
+
   // Date representation
   const formattedSelectedDate = useMemo(() => {
     if (!selectedDate) return '';
@@ -1179,8 +1192,23 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="bg-editorial-dark/[0.03] border border-editorial-dark/10 p-2 font-mono text-[9px] text-editorial-dark/70 rounded-none leading-relaxed overflow-x-auto whitespace-pre">
-                          {"Date,Tracker Name,Value,Notes\n2026-07-09,Water Intake,8,Target met!\n2026-07-09,Meditation,15,Focused session"}
+                        <div className="relative group">
+                          <div className="bg-editorial-dark/[0.03] border border-editorial-dark/10 p-2 pr-10 font-mono text-[9px] text-editorial-dark/70 rounded-none leading-relaxed overflow-x-auto whitespace-pre">
+                            {"Date,Tracker Name,Value,Notes\n2026-07-09,Water Intake,8,Target met!\n2026-07-09,Meditation,15,Focused session"}
+                          </div>
+                          <button
+                            type="button"
+                            id="copy-csv-example-button"
+                            onClick={handleCopyCSVExample}
+                            className="absolute top-1.5 right-1.5 p-1 bg-editorial-bg hover:bg-editorial-orange-light/10 border border-editorial-dark/15 text-editorial-dark/60 hover:text-editorial-orange transition-colors cursor-pointer rounded-none flex items-center justify-center"
+                            title="Copy example text to clipboard"
+                          >
+                            {copiedCSVExample ? (
+                              <Check size={11} className="text-emerald-600" />
+                            ) : (
+                              <Copy size={11} />
+                            )}
+                          </button>
                         </div>
 
                         <button
