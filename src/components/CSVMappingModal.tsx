@@ -105,7 +105,7 @@ interface CSVMappingModalProps {
   onClose: () => void;
   headers: string[];
   csvText: string;
-  onConfirm: (mapping: ColumnMapping) => void;
+  onConfirm: (mapping: ColumnMapping, useSmartFormatting: boolean) => void;
 }
 
 export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }: CSVMappingModalProps) {
@@ -120,6 +120,7 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
   const [timestampIdx, setTimestampIdx] = useState<number>(-1);
 
   const [selectedPreset, setSelectedPreset] = useState<string>('auto');
+  const [useSmartFormatting, setUseSmartFormatting] = useState<boolean>(true);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const applyPreset = (presetId: string) => {
@@ -206,7 +207,7 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
       timestampIdx: timestampIdx !== -1 ? timestampIdx : undefined,
     };
 
-    onConfirm(mapping);
+    onConfirm(mapping, useSmartFormatting);
     onClose();
   };
 
@@ -260,28 +261,55 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
               </div>
 
               {/* Format Preset Selector */}
-              <div className="bg-editorial-accent-light/20 border border-editorial-dark/10 p-4 space-y-2">
-                <label className="block text-xs font-mono font-medium text-editorial-dark/60 uppercase tracking-wider">
-                  Common CSV Formats Preset:
-                </label>
-                <select
-                  value={selectedPreset}
-                  onChange={(e) => {
-                    const nextPreset = e.target.value;
-                    setSelectedPreset(nextPreset);
-                    applyPreset(nextPreset);
-                  }}
-                  className="w-full rounded-none border border-editorial-dark/20 px-3 py-2.5 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all cursor-pointer font-serif font-medium"
-                >
-                  {PRESETS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-editorial-dark/60 font-sans leading-tight">
-                  {PRESETS.find((p) => p.id === selectedPreset)?.description}
-                </p>
+              <div className="bg-editorial-accent-light/20 border border-editorial-dark/10 p-4 space-y-4">
+                <div className="space-y-2">
+                  <label className="block text-xs font-mono font-medium text-editorial-dark/60 uppercase tracking-wider">
+                    Common CSV Formats Preset:
+                  </label>
+                  <select
+                    value={selectedPreset}
+                    onChange={(e) => {
+                      const nextPreset = e.target.value;
+                      setSelectedPreset(nextPreset);
+                      applyPreset(nextPreset);
+                    }}
+                    className="w-full rounded-none border border-editorial-dark/20 px-3 py-2.5 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all cursor-pointer font-serif font-medium"
+                  >
+                    {PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-editorial-dark/60 font-sans leading-tight">
+                    {PRESETS.find((p) => p.id === selectedPreset)?.description}
+                  </p>
+                </div>
+
+                {/* Smart Formatting Toggle */}
+                <div className="pt-3 border-t border-editorial-dark/10 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="smart-formatting-toggle"
+                    checked={useSmartFormatting}
+                    onChange={(e) => setUseSmartFormatting(e.target.checked)}
+                    className="mt-0.5 rounded-none border-editorial-dark/20 text-editorial-orange focus:ring-editorial-orange h-4 w-4 cursor-pointer accent-editorial-orange"
+                  />
+                  <div className="flex flex-col">
+                    <label
+                      htmlFor="smart-formatting-toggle"
+                      className="text-xs font-serif font-semibold text-editorial-dark cursor-pointer flex items-center gap-1.5"
+                    >
+                      Enable Smart Formatting
+                      <span className="bg-editorial-orange/10 text-editorial-orange text-[9px] font-mono px-1.5 py-0.5 uppercase tracking-wider font-semibold">
+                        Recommended
+                      </span>
+                    </label>
+                    <p className="text-[10px] text-editorial-dark/60 font-sans leading-relaxed mt-0.5">
+                      Automatically trims whitespace/zero-width chars and corrects date formatting inconsistencies (e.g. converting <strong>MM/DD/YYYY</strong> or timestamped entries to standard <strong>YYYY-MM-DD</strong>).
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {validationError && (

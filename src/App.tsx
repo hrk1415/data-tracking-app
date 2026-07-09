@@ -866,8 +866,8 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  const handleConfirmCSVMapping = (mapping: ColumnMapping) => {
-    const result = importLogsFromCSV(pendingCSVText, trackers, mapping);
+  const handleConfirmCSVMapping = (mapping: ColumnMapping, useSmartFormatting: boolean) => {
+    const result = importLogsFromCSV(pendingCSVText, trackers, mapping, useSmartFormatting);
     if (result && result.importedCount > 0) {
       setTrackers(result.trackers);
       setLogs(result.logs);

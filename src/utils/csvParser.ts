@@ -79,7 +79,8 @@ export interface ColumnMapping {
 export function importLogsFromCSV(
   csvText: string,
   existingTrackers: Tracker[],
-  mapping?: ColumnMapping
+  mapping?: ColumnMapping,
+  useSmartFormatting: boolean = false
 ): { trackers: Tracker[]; logs: LogEntry[]; importedCount: number } | null {
   const parsed = parseCSV(csvText);
   if (parsed.length < 2) return null; // Needs at least header and 1 data row
@@ -141,27 +142,84 @@ export function importLogsFromCSV(
     const row = parsed[i];
     if (row.length < Math.max(dateIdx, nameIdx, valIdx) + 1) continue;
 
-    const dateStr = row[dateIdx]?.trim();
-    const nameStr = row[nameIdx]?.trim();
-    const valStr = row[valIdx]?.trim();
+    let dateStrRaw = row[dateIdx] || '';
+    let nameStrRaw = row[nameIdx] || '';
+    let valStrRaw = row[valIdx] || '';
 
-    if (!dateStr || !nameStr || !valStr) continue;
+    if (useSmartFormatting) {
+      // Remove zero-width spaces, non-breaking spaces, and standard trims
+      dateStrRaw = dateStrRaw.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+      nameStrRaw = nameStrRaw.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+      valStrRaw = valStrRaw.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    } else {
+      dateStrRaw = dateStrRaw.trim();
+      nameStrRaw = nameStrRaw.trim();
+      valStrRaw = valStrRaw.trim();
+    }
+
+    if (!dateStrRaw || !nameStrRaw || !valStrRaw) continue;
+
+    const dateStr = dateStrRaw;
+    const nameStr = nameStrRaw;
+    const valStr = valStrRaw;
 
     // Parse date (support formats like YYYY-MM-DD or MM/DD/YYYY or MM-DD-YYYY or DD/MM/YYYY)
     let parsedDate = dateStr;
-    const dateParts = dateStr.split(/[-/]/);
-    if (dateParts.length === 3) {
-      if (dateParts[2].length === 4 && dateParts[0].length <= 2) {
-        // MM/DD/YYYY or DD/MM/YYYY - default to system's built-in parser fallback for security
-        const d = new Date(dateStr);
-        if (!isNaN(d.getTime())) {
-          parsedDate = d.toISOString().split('T')[0];
+
+    if (useSmartFormatting) {
+      // Isolate the date portion (e.g. "2026-07-09 14:30" or "7/9/2026, 12:34 PM" -> "2026-07-09" or "7/9/2026")
+      const dateOnlyStr = dateStr.split(/[\s,T]/)[0].trim();
+      const dateParts = dateOnlyStr.split(/[-./]/);
+      
+      if (dateParts.length === 3) {
+        let p0 = dateParts[0].trim();
+        let p1 = dateParts[1].trim();
+        let p2 = dateParts[2].trim();
+
+        // Check for YYYY-MM-DD format first
+        if (p0.length === 4) {
+          const yyyy = p0;
+          const mm = p1.padStart(2, '0');
+          const dd = p2.padStart(2, '0');
+          parsedDate = `${yyyy}-${mm}-${dd}`;
         }
-      } else if (dateParts[0].length === 4) {
-        const yyyy = dateParts[0];
-        const mm = dateParts[1].padStart(2, '0');
-        const dd = dateParts[2].padStart(2, '0');
-        parsedDate = `${yyyy}-${mm}-${dd}`;
+        // Check for MM/DD/YYYY or DD/MM/YYYY (where year is at the end)
+        else if (p2.length === 4 || p2.length === 2) {
+          let yyyy = p2;
+          if (yyyy.length === 2) {
+            yyyy = '20' + yyyy; // Expand 2-digit years
+          }
+
+          const p0Num = parseInt(p0, 10);
+          const p1Num = parseInt(p1, 10);
+
+          if (p0Num > 12 && p0Num <= 31 && p1Num <= 12) {
+            // Definitely DD/MM/YYYY
+            const dd = p0.padStart(2, '0');
+            const mm = p1.padStart(2, '0');
+            parsedDate = `${yyyy}-${mm}-${dd}`;
+          } else {
+            // Default to MM/DD/YYYY
+            const mm = p0.padStart(2, '0');
+            const dd = p1.padStart(2, '0');
+            parsedDate = `${yyyy}-${mm}-${dd}`;
+          }
+        }
+      }
+    } else {
+      const dateParts = dateStr.split(/[-/]/);
+      if (dateParts.length === 3) {
+        if (dateParts[2].length === 4 && dateParts[0].length <= 2) {
+          const d = new Date(dateStr);
+          if (!isNaN(d.getTime())) {
+            parsedDate = d.toISOString().split('T')[0];
+          }
+        } else if (dateParts[0].length === 4) {
+          const yyyy = dateParts[0];
+          const mm = dateParts[1].padStart(2, '0');
+          const dd = dateParts[2].padStart(2, '0');
+          parsedDate = `${yyyy}-${mm}-${dd}`;
+        }
       }
     }
 
