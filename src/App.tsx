@@ -104,6 +104,7 @@ export default function App() {
   const [pendingCSVText, setPendingCSVText] = useState<string>('');
   const [lastToggleBackup, setLastToggleBackup] = useState<LogEntry[] | null>(null);
   const [lastToggleDate, setLastToggleDate] = useState<string | null>(null);
+  const [lastImportedLogIds, setLastImportedLogIds] = useState<string[]>([]);
 
   // Reflection editor state
   const [reflectionInput, setReflectionInput] = useState<string>('');
@@ -871,9 +872,14 @@ export default function App() {
     const result = importLogsFromCSV(pendingCSVText, trackers, mapping, useSmartFormatting);
     if (result && result.importedCount > 0) {
       setTrackers(result.trackers);
-      setLogs(result.logs);
+      const updatedLogs = [...logs, ...result.logs];
+      setLogs(updatedLogs);
       saveTrackers(result.trackers);
-      saveLogs(result.logs);
+      saveLogs(updatedLogs);
+      
+      // Store imported log IDs to support batch deletion
+      const importedIds = result.logs.map(l => l.id);
+      setLastImportedLogIds(importedIds);
       
       setCsvImportStatus('success');
       setCsvImportMessage(`Successfully imported ${result.importedCount} logs!`);
@@ -893,6 +899,26 @@ export default function App() {
         setCsvImportMessage('');
       }, 5000);
     }
+  };
+
+  const handleRevertLastCSVImport = () => {
+    if (lastImportedLogIds.length === 0) return;
+    
+    const filteredLogs = logs.filter(l => !lastImportedLogIds.includes(l.id));
+    setLogs(filteredLogs);
+    saveLogs(filteredLogs);
+    
+    const count = lastImportedLogIds.length;
+    setLastImportedLogIds([]);
+    
+    setCsvImportStatus('warning');
+    setCsvImportMessage(`Reverted last import: Deleted ${count} logs.`);
+    
+    // Reset status after 5 seconds
+    setTimeout(() => {
+      setCsvImportStatus(null);
+      setCsvImportMessage('');
+    }, 5000);
   };
 
   // CSV Import backing trigger
@@ -1343,6 +1369,24 @@ export default function App() {
                       <div className="absolute inset-0 z-10 pointer-events-none" />
                     )}
                   </label>
+
+                  {/* Batch Delete / Revert Imported Logs Button */}
+                  <AnimatePresence>
+                    {lastImportedLogIds.length > 0 && (
+                      <motion.button
+                        type="button"
+                        initial={{ opacity: 0, scale: 0.95, x: -5 }}
+                        animate={{ opacity: 1, scale: 1, x: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, x: -5 }}
+                        onClick={handleRevertLastCSVImport}
+                        className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-700 hover:text-rose-800 px-3 py-2 text-xs font-mono uppercase tracking-wider font-semibold transition-all cursor-pointer"
+                        title={`Delete the ${lastImportedLogIds.length} logs from your most recent CSV import`}
+                      >
+                        <Trash2 size={13} className="text-rose-600" />
+                        <span>Revert Import ({lastImportedLogIds.length})</span>
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
 
                   {/* Persistent Quick Guide Badge with Hover Tooltip */}
                   <div className="relative group inline-flex items-center">
