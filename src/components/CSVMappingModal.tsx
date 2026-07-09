@@ -5,8 +5,100 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Check, ArrowRight, HelpCircle } from 'lucide-react';
+import { X, Check, ArrowRight, HelpCircle, Sliders } from 'lucide-react';
 import { ColumnMapping } from '../utils/csvParser';
+
+interface FormatPreset {
+  id: string;
+  name: string;
+  description: string;
+  rules: {
+    date: RegExp[];
+    name: RegExp[];
+    val: RegExp[];
+    cat?: RegExp[];
+    unit?: RegExp[];
+    goal?: RegExp[];
+    notes?: RegExp[];
+    timestamp?: RegExp[];
+  };
+}
+
+const PRESETS: FormatPreset[] = [
+  {
+    id: 'auto',
+    name: 'Auto-Detect (Smart scan)',
+    description: 'Scans for headers matching common calendar and tracking terms.',
+    rules: {
+      date: [/date/i, /day/i],
+      name: [/tracker\s*name/i, /tracker/i],
+      val: [/value/i, /amount/i, /qty/i, /count/i],
+      cat: [/category/i, /cat/i],
+      unit: [/unit/i, /measure/i],
+      goal: [/goal/i, /target/i],
+      notes: [/notes/i, /note/i, /comment/i],
+      timestamp: [/logged\s*at/i, /timestamp/i, /time/i]
+    }
+  },
+  {
+    id: 'apple_health',
+    name: 'Apple Health Export',
+    description: 'Pre-maps standard Apple Health CSV headers (startDate, type, value, unit).',
+    rules: {
+      date: [/startDate/i, /creationDate/i, /date/i],
+      name: [/type/i, /name/i, /recordtype/i],
+      val: [/value/i, /quantity/i, /amount/i],
+      unit: [/unit/i],
+      timestamp: [/endDate/i, /time/i]
+    }
+  },
+  {
+    id: 'google_fit',
+    name: 'Google Fit Export',
+    description: 'Pre-maps standard Google Fit export headers (start time, activity, value).',
+    rules: {
+      date: [/start\s*time/i, /date/i, /day/i],
+      name: [/activity/i, /type/i, /name/i],
+      val: [/value/i, /steps/i, /calories/i, /count/i],
+      unit: [/unit/i]
+    }
+  },
+  {
+    id: 'habitica',
+    name: 'Habitica Export',
+    description: 'Pre-maps Habitica task, habit, and completion history columns.',
+    rules: {
+      date: [/completed/i, /date/i, /time/i],
+      name: [/habit/i, /title/i, /task/i],
+      val: [/value/i, /count/i, /qty/i]
+    }
+  },
+  {
+    id: 'standard',
+    name: 'Standard Tracker Format',
+    description: 'Uses exact matching for strict App data formats.',
+    rules: {
+      date: [/^date$/i],
+      name: [/^tracker\s*name$/i],
+      val: [/^value$/i],
+      cat: [/^category$/i],
+      unit: [/^unit$/i],
+      goal: [/^goal$/i],
+      notes: [/^notes$/i],
+      timestamp: [/^timestamp$/i]
+    }
+  },
+  {
+    id: 'manual',
+    name: 'Custom / Manual mapping',
+    description: 'Allows fully manual customization of columns.',
+    rules: {
+      date: [],
+      name: [],
+      val: []
+    }
+  }
+];
 
 interface CSVMappingModalProps {
   isOpen: boolean;
@@ -27,47 +119,67 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
   const [notesIdx, setNotesIdx] = useState<number>(-1);
   const [timestampIdx, setTimestampIdx] = useState<number>(-1);
 
+  const [selectedPreset, setSelectedPreset] = useState<string>('auto');
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Auto-detect columns on mount or when headers change
-  useEffect(() => {
-    if (headers.length > 0) {
-      let dIdx = -1;
-      let nIdx = -1;
-      let vIdx = -1;
-      let cIdx = -1;
-      let uIdx = -1;
-      let gIdx = -1;
-      let noIdx = -1;
-      let tIdx = -1;
+  const applyPreset = (presetId: string) => {
+    const preset = PRESETS.find(p => p.id === presetId);
+    if (!preset || presetId === 'manual') return;
 
-      for (let i = 0; i < headers.length; i++) {
-        const h = headers[i].toLowerCase().trim();
-        if (/date|day/i.test(h) && dIdx === -1) dIdx = i;
-        else if (/tracker\s*name|tracker/i.test(h) && nIdx === -1) nIdx = i;
-        else if (/category|cat/i.test(h) && cIdx === -1) cIdx = i;
-        else if (/value|amount|qty|count/i.test(h) && vIdx === -1) vIdx = i;
-        else if (/unit|measure/i.test(h) && uIdx === -1) uIdx = i;
-        else if (/goal|target/i.test(h) && gIdx === -1) gIdx = i;
-        else if (/notes|note|comment/i.test(h) && noIdx === -1) noIdx = i;
-        else if (/logged\s*at|timestamp|time/i.test(h) && tIdx === -1) tIdx = i;
+    let dIdx = -1;
+    let nIdx = -1;
+    let vIdx = -1;
+    let cIdx = -1;
+    let uIdx = -1;
+    let gIdx = -1;
+    let noIdx = -1;
+    let tIdx = -1;
+
+    const findIndex = (regexes: RegExp[] | undefined) => {
+      if (!regexes) return -1;
+      for (const regex of regexes) {
+        for (let i = 0; i < headers.length; i++) {
+          if (regex.test(headers[i].trim())) {
+            return i;
+          }
+        }
       }
+      return -1;
+    };
 
-      // If missing, apply basic positional fallback (0: Date, 1: Name, 2: Value)
+    dIdx = findIndex(preset.rules.date);
+    nIdx = findIndex(preset.rules.name);
+    vIdx = findIndex(preset.rules.val);
+    cIdx = findIndex(preset.rules.cat);
+    uIdx = findIndex(preset.rules.unit);
+    gIdx = findIndex(preset.rules.goal);
+    noIdx = findIndex(preset.rules.notes);
+    tIdx = findIndex(preset.rules.timestamp);
+
+    // Dynamic Positional fallbacks for required fields if still not found and custom/auto is used
+    if (presetId === 'auto' || presetId === 'standard') {
       if (dIdx === -1 && headers.length >= 1) dIdx = 0;
       if (nIdx === -1 && headers.length >= 2) nIdx = 1;
       if (vIdx === -1 && headers.length >= 3) vIdx = 2;
-
-      setDateIdx(dIdx);
-      setNameIdx(nIdx);
-      setValIdx(vIdx);
-      setCatIdx(cIdx);
-      setUnitIdx(uIdx);
-      setGoalIdx(gIdx);
-      setNotesIdx(noIdx);
-      setTimestampIdx(tIdx);
     }
-  }, [headers]);
+
+    setDateIdx(dIdx);
+    setNameIdx(nIdx);
+    setValIdx(vIdx);
+    setCatIdx(cIdx);
+    setUnitIdx(uIdx);
+    setGoalIdx(gIdx);
+    setNotesIdx(noIdx);
+    setTimestampIdx(tIdx);
+  };
+
+  // Reset and auto-detect when modal opens or headers change
+  useEffect(() => {
+    if (isOpen && headers.length > 0) {
+      setSelectedPreset('auto');
+      applyPreset('auto');
+    }
+  }, [isOpen, headers]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,7 +235,7 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
             <div className="flex items-center justify-between border-b border-editorial-dark/15 px-6 py-4 bg-editorial-accent-light/10">
               <div className="flex flex-col">
                 <h3 className="font-serif font-medium text-lg text-editorial-dark flex items-center gap-2">
-                  <HelpCircle className="text-editorial-orange" size={18} />
+                  <Sliders className="text-editorial-orange" size={18} />
                   Map CSV Columns
                 </h3>
                 <p className="text-[11px] text-editorial-dark/60 font-sans mt-0.5">
@@ -147,6 +259,31 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
                 We detected the following columns in your file. For successful importing, map them to the corresponding tracker variables.
               </div>
 
+              {/* Format Preset Selector */}
+              <div className="bg-editorial-accent-light/20 border border-editorial-dark/10 p-4 space-y-2">
+                <label className="block text-xs font-mono font-medium text-editorial-dark/60 uppercase tracking-wider">
+                  Common CSV Formats Preset:
+                </label>
+                <select
+                  value={selectedPreset}
+                  onChange={(e) => {
+                    const nextPreset = e.target.value;
+                    setSelectedPreset(nextPreset);
+                    applyPreset(nextPreset);
+                  }}
+                  className="w-full rounded-none border border-editorial-dark/20 px-3 py-2.5 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all cursor-pointer font-serif font-medium"
+                >
+                  {PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-editorial-dark/60 font-sans leading-tight">
+                  {PRESETS.find((p) => p.id === selectedPreset)?.description}
+                </p>
+              </div>
+
               {validationError && (
                 <div className="bg-rose-500/10 border border-rose-500/20 text-rose-800 text-xs p-3 font-sans italic flex items-center gap-1.5">
                   <span className="font-bold">⚠️</span> {validationError}
@@ -168,7 +305,10 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
                     </label>
                     <select
                       value={dateIdx}
-                      onChange={(e) => setDateIdx(Number(e.target.value))}
+                      onChange={(e) => {
+                        setDateIdx(Number(e.target.value));
+                        setSelectedPreset('manual');
+                      }}
                       className="w-full rounded-none border border-editorial-dark/20 px-3 py-2 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all"
                     >
                       <option value="-1">-- Select Column --</option>
@@ -187,7 +327,10 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
                     </label>
                     <select
                       value={nameIdx}
-                      onChange={(e) => setNameIdx(Number(e.target.value))}
+                      onChange={(e) => {
+                        setNameIdx(Number(e.target.value));
+                        setSelectedPreset('manual');
+                      }}
                       className="w-full rounded-none border border-editorial-dark/20 px-3 py-2 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all"
                     >
                       <option value="-1">-- Select Column --</option>
@@ -206,7 +349,10 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
                     </label>
                     <select
                       value={valIdx}
-                      onChange={(e) => setValIdx(Number(e.target.value))}
+                      onChange={(e) => {
+                        setValIdx(Number(e.target.value));
+                        setSelectedPreset('manual');
+                      }}
                       className="w-full rounded-none border border-editorial-dark/20 px-3 py-2 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all"
                     >
                       <option value="-1">-- Select Column --</option>
@@ -234,7 +380,10 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
                     </label>
                     <select
                       value={catIdx}
-                      onChange={(e) => setCatIdx(Number(e.target.value))}
+                      onChange={(e) => {
+                        setCatIdx(Number(e.target.value));
+                        setSelectedPreset('manual');
+                      }}
                       className="w-full rounded-none border border-editorial-dark/20 px-3 py-2 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all"
                     >
                       <option value="-1">None / Ignore</option>
@@ -253,7 +402,10 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
                     </label>
                     <select
                       value={unitIdx}
-                      onChange={(e) => setUnitIdx(Number(e.target.value))}
+                      onChange={(e) => {
+                        setUnitIdx(Number(e.target.value));
+                        setSelectedPreset('manual');
+                      }}
                       className="w-full rounded-none border border-editorial-dark/20 px-3 py-2 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all"
                     >
                       <option value="-1">None / Ignore</option>
@@ -272,7 +424,10 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
                     </label>
                     <select
                       value={goalIdx}
-                      onChange={(e) => setGoalIdx(Number(e.target.value))}
+                      onChange={(e) => {
+                        setGoalIdx(Number(e.target.value));
+                        setSelectedPreset('manual');
+                      }}
                       className="w-full rounded-none border border-editorial-dark/20 px-3 py-2 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all"
                     >
                       <option value="-1">None / Ignore</option>
@@ -291,7 +446,10 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
                     </label>
                     <select
                       value={notesIdx}
-                      onChange={(e) => setNotesIdx(Number(e.target.value))}
+                      onChange={(e) => {
+                        setNotesIdx(Number(e.target.value));
+                        setSelectedPreset('manual');
+                      }}
                       className="w-full rounded-none border border-editorial-dark/20 px-3 py-2 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all"
                     >
                       <option value="-1">None / Ignore</option>
@@ -310,7 +468,10 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
                     </label>
                     <select
                       value={timestampIdx}
-                      onChange={(e) => setTimestampIdx(Number(e.target.value))}
+                      onChange={(e) => {
+                        setTimestampIdx(Number(e.target.value));
+                        setSelectedPreset('manual');
+                      }}
                       className="w-full rounded-none border border-editorial-dark/20 px-3 py-2 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all"
                     >
                       <option value="-1">None / Ignore</option>
