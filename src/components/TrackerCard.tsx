@@ -230,6 +230,54 @@ export function TrackerCard({
     };
   }, [last7DaysSparklineData]);
 
+  // Calculate Week-over-Week (WoW) percentage change (currentValue compared to exactly 7 days prior)
+  const wowChange = React.useMemo(() => {
+    const prevWeekDateObj = new Date(selectedDate + 'T12:00:00');
+    prevWeekDateObj.setDate(prevWeekDateObj.getDate() - 7);
+    const prevWeekDateStr = prevWeekDateObj.toISOString().split('T')[0];
+
+    const prevWeekLogs = logs.filter(l => l.trackerId === tracker.id && l.date === prevWeekDateStr);
+    
+    let prevWeekValue = 0;
+    if (tracker.type === 'counter') {
+      prevWeekValue = prevWeekLogs.reduce((sum, log) => sum + log.value, 0);
+    } else {
+      prevWeekValue = prevWeekLogs.length > 0 ? prevWeekLogs[prevWeekLogs.length - 1].value : 0;
+    }
+
+    const diff = currentValue - prevWeekValue;
+    
+    let percentChange: number | null = null;
+    let trend: 'up' | 'down' | 'stable' = 'stable';
+    
+    if (Math.abs(diff) < 0.0001) {
+      trend = 'stable';
+      percentChange = 0;
+    } else if (diff > 0.0001) {
+      trend = 'up';
+      if (prevWeekValue === 0) {
+        percentChange = 100; // From 0 to positive is a 100% increase
+      } else {
+        percentChange = (diff / prevWeekValue) * 100;
+      }
+    } else if (diff < -0.0001) {
+      trend = 'down';
+      if (prevWeekValue === 0) {
+        percentChange = -100; // From 0 to less/negative is a 100% decrease
+      } else {
+        percentChange = (diff / prevWeekValue) * 100;
+      }
+    }
+
+    return {
+      prevWeekValue,
+      currentValue,
+      diff,
+      percentChange,
+      trend,
+    };
+  }, [tracker, logs, selectedDate, currentValue]);
+
   const colorStyles = COLOR_MAP[tracker.color] || COLOR_MAP.emerald;
 
   // Percentage completion for progress bars
@@ -477,6 +525,39 @@ export function TrackerCard({
               )}
             </span>
           )}
+          {wowChange && (
+            <span 
+              className={`inline-flex items-center gap-1 text-[10px] font-mono font-medium border rounded-none px-2 py-0.5 select-none cursor-help ${
+                wowChange.trend === 'up'
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-800'
+                  : wowChange.trend === 'down'
+                  ? 'bg-rose-500/10 border-rose-500/20 text-rose-800'
+                  : 'bg-editorial-dark/5 border-editorial-dark/10 text-editorial-dark/60'
+              }`}
+              title={`7 Days Ago: ${wowChange.prevWeekValue}${tracker.unit ? ` ${tracker.unit}` : ''} | Today: ${wowChange.currentValue}${tracker.unit ? ` ${tracker.unit}` : ''}`}
+            >
+              {wowChange.trend === 'up' ? (
+                <>
+                  <ArrowUp size={11} className="stroke-[2.5px] text-emerald-600" />
+                  <span>
+                    WoW: +{Math.round(wowChange.percentChange ?? 0)}%
+                  </span>
+                </>
+              ) : wowChange.trend === 'down' ? (
+                <>
+                  <ArrowDown size={11} className="stroke-[2.5px] text-rose-600" />
+                  <span>
+                    WoW: {Math.round(wowChange.percentChange ?? 0)}%
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Minus size={11} className="stroke-[2.5px] text-editorial-dark/40" />
+                  <span>WoW: 0%</span>
+                </>
+              )}
+            </span>
+          )}
         </div>
       </div>
 
@@ -489,32 +570,62 @@ export function TrackerCard({
 
       {/* 7-Day Sparkline & Trend */}
       <div className="mb-4 py-2 border-y border-editorial-dark/10 flex items-center justify-between gap-4 h-[54px]">
-        <div className="flex flex-col">
-          <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-editorial-dark/45">
-            7-Day Trend
-          </span>
-          {last7DaysTrend ? (
-            <div className="flex items-center gap-1.5 mt-0.5">
-              {last7DaysTrend.trend === 'up' ? (
-                <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-500 font-sans text-xs font-semibold">
-                  <ArrowUp size={12} className="stroke-[2.5px]" />
-                  <span>+{tracker.type === 'boolean' ? 'Active' : `${Math.round(last7DaysTrend.diff * 100) / 100}${tracker.unit ? ` ${tracker.unit}` : ''}`}</span>
-                </div>
-              ) : last7DaysTrend.trend === 'down' ? (
-                <div className="flex items-center gap-1 text-rose-600 dark:text-rose-500 font-sans text-xs font-semibold">
-                  <ArrowDown size={12} className="stroke-[2.5px]" />
-                  <span>{tracker.type === 'boolean' ? 'Inactive' : `${Math.round(last7DaysTrend.diff * 100) / 100}${tracker.unit ? ` ${tracker.unit}` : ''}`}</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 text-editorial-dark/50 font-sans text-xs font-medium">
-                  <Minus size={12} className="stroke-[2.5px]" />
-                  <span>Stable</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <span className="text-[10px] font-sans italic text-editorial-dark/40 mt-0.5">No recent data</span>
-          )}
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          <div className="flex flex-col">
+            <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-editorial-dark/45">
+              7-Day Trend
+            </span>
+            {last7DaysTrend ? (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {last7DaysTrend.trend === 'up' ? (
+                  <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-500 font-sans text-xs font-semibold">
+                    <ArrowUp size={12} className="stroke-[2.5px]" />
+                    <span>+{tracker.type === 'boolean' ? 'Active' : `${Math.round(last7DaysTrend.diff * 100) / 100}${tracker.unit ? ` ${tracker.unit}` : ''}`}</span>
+                  </div>
+                ) : last7DaysTrend.trend === 'down' ? (
+                  <div className="flex items-center gap-1 text-rose-600 dark:text-rose-500 font-sans text-xs font-semibold">
+                    <ArrowDown size={12} className="stroke-[2.5px]" />
+                    <span>{tracker.type === 'boolean' ? 'Inactive' : `${Math.round(last7DaysTrend.diff * 100) / 100}${tracker.unit ? ` ${tracker.unit}` : ''}`}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 text-editorial-dark/50 font-sans text-xs font-medium">
+                    <Minus size={12} className="stroke-[2.5px]" />
+                    <span>Stable</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="text-[10px] font-sans italic text-editorial-dark/40 mt-0.5">No recent data</span>
+            )}
+          </div>
+
+          <div className="flex flex-col border-l border-editorial-dark/10 pl-4">
+            <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-editorial-dark/45">
+              WoW Change
+            </span>
+            {wowChange ? (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {wowChange.trend === 'up' ? (
+                  <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-500 font-sans text-xs font-semibold" title={`7 days ago: ${wowChange.prevWeekValue}${tracker.unit ? ` ${tracker.unit}` : ''} | Today: ${wowChange.currentValue}${tracker.unit ? ` ${tracker.unit}` : ''}`}>
+                    <ArrowUp size={12} className="stroke-[2.5px]" />
+                    <span>+{Math.round(wowChange.percentChange ?? 0)}%</span>
+                  </div>
+                ) : wowChange.trend === 'down' ? (
+                  <div className="flex items-center gap-1 text-rose-600 dark:text-rose-500 font-sans text-xs font-semibold" title={`7 days ago: ${wowChange.prevWeekValue}${tracker.unit ? ` ${tracker.unit}` : ''} | Today: ${wowChange.currentValue}${tracker.unit ? ` ${tracker.unit}` : ''}`}>
+                    <ArrowDown size={12} className="stroke-[2.5px]" />
+                    <span>{Math.round(wowChange.percentChange ?? 0)}%</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 text-editorial-dark/50 font-sans text-xs font-medium">
+                    <Minus size={12} className="stroke-[2.5px]" />
+                    <span>0%</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="text-[10px] font-sans italic text-editorial-dark/40 mt-0.5">No recent data</span>
+            )}
+          </div>
         </div>
 
         {/* Tiny Sparkline Chart */}
