@@ -8,7 +8,7 @@ import { Tracker, LogEntry, COLOR_MAP } from '../types';
 import { LucideIcon } from './LucideIcon';
 import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown, LineChart as LineChartIcon, X, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 
 interface TrackerCardProps {
   key?: string;
@@ -236,6 +236,17 @@ export function TrackerCard({
   const target = tracker.targetValue;
   const isCompleted = target ? currentValue >= target : false;
   const completionPercent = target ? Math.min(Math.round((currentValue / target) * 100), 100) : 0;
+
+  const goalChartData = React.useMemo(() => {
+    if (!target) return [];
+    return [
+      {
+        name: 'Progress',
+        Actual: currentValue,
+        Target: target,
+      }
+    ];
+  }, [currentValue, target]);
 
   // Custom quick increment buttons based on unit types
   const getQuickIncrements = () => {
@@ -665,20 +676,81 @@ export function TrackerCard({
         )}
       </div>
 
-      {/* Progress towards goal bar */}
+      {/* Progress towards goal bar / interactive chart */}
       {target && (
-        <div className="mt-4 space-y-1.5">
-          <div className="flex justify-between text-[9px] font-mono font-medium text-editorial-dark/50 uppercase tracking-wider">
-            <span>Progress</span>
-            <span>{completionPercent}%</span>
+        <div className="mt-4 space-y-2">
+          <div className="flex justify-between items-center text-[9px] font-mono font-bold uppercase tracking-widest text-editorial-dark/45">
+            <span>Goal Progress</span>
+            <span className="text-editorial-accent font-bold">{completionPercent}%</span>
           </div>
-          <div className="h-1 w-full bg-editorial-dark/10 rounded-none overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${completionPercent}%` }}
-              transition={{ duration: 0.5, ease: 'easeOut' }}
-              className={`h-full rounded-none ${colorStyles.bg}`}
-            />
+
+          <div className="h-14 w-full bg-editorial-dark/[0.02] border border-editorial-dark/5 p-1.5 flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                layout="vertical"
+                data={goalChartData}
+                margin={{ top: 0, right: 10, left: -25, bottom: 0 }}
+                barGap={2}
+              >
+                <XAxis type="number" hide domain={[0, Math.max(currentValue, target) * 1.1]} />
+                <YAxis type="category" dataKey="name" hide />
+                <Tooltip
+                  cursor={{ fill: 'rgba(0, 0, 0, 0.02)' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const actual = payload.find(p => p.dataKey === 'Actual')?.value ?? 0;
+                      const targetVal = payload.find(p => p.dataKey === 'Target')?.value ?? 0;
+                      const pct = targetVal > 0 ? Math.round((Number(actual) / Number(targetVal)) * 100) : 0;
+                      const isMet = Number(actual) >= Number(targetVal);
+                      const diff = Number(targetVal) - Number(actual);
+                      
+                      return (
+                        <div className="bg-editorial-dark text-editorial-bg text-[10px] font-mono p-2.5 border border-editorial-accent/20 rounded-none shadow-lg z-50 space-y-1 select-none">
+                          <p className="font-serif italic text-[11px] text-editorial-accent border-b border-editorial-bg/10 pb-1 mb-1 font-bold">Goal Status</p>
+                          <p className="font-medium">Logged: <span className="font-bold">{actual} {tracker.unit || ''}</span></p>
+                          <p className="font-medium">Target: <span className="font-bold">{targetVal} {tracker.unit || ''}</span></p>
+                          <p className="font-bold text-editorial-accent mt-1">Progress: {pct}%</p>
+                          <p className="text-[9px] text-editorial-bg/65 italic pt-0.5">
+                            {isMet ? 'Goal Achieved! ✨' : `${Math.round(diff * 100) / 100} ${tracker.unit || ''} remaining`}
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar 
+                  dataKey="Actual" 
+                  fill={`var(--editorial-${tracker.color})`} 
+                  radius={0} 
+                  barSize={8}
+                  name="Logged"
+                />
+                <Bar 
+                  dataKey="Target" 
+                  fill="var(--editorial-dark)" 
+                  opacity={0.15} 
+                  radius={0} 
+                  barSize={8}
+                  name="Target"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="flex items-center justify-between text-[9px] font-mono text-editorial-dark/50 italic px-0.5">
+            {currentValue >= target ? (
+              <span className="text-emerald-600 dark:text-emerald-500 font-bold flex items-center gap-1">
+                <Check size={10} className="stroke-[3px]" /> Target Achieved
+              </span>
+            ) : (
+              <span>
+                {Math.round((target - currentValue) * 100) / 100} {tracker.unit || ''} remaining
+              </span>
+            )}
+            <span>
+              Today: {currentValue}/{target}
+            </span>
           </div>
         </div>
       )}
