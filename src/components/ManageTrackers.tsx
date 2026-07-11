@@ -34,6 +34,7 @@ export function ManageTrackers({ trackers, onDeleteTracker, onUpdateTracker, log
   const [editIcon, setEditIcon] = useState('');
   const [editTargetValue, setEditTargetValue] = useState<string>('');
   const [hasTarget, setHasTarget] = useState(false);
+  const [editTags, setEditTags] = useState('');
 
   const startEdit = (tracker: Tracker) => {
     setEditingTrackerId(tracker.id);
@@ -44,6 +45,7 @@ export function ManageTrackers({ trackers, onDeleteTracker, onUpdateTracker, log
     setEditIcon(tracker.icon);
     setHasTarget(tracker.targetValue !== undefined);
     setEditTargetValue(tracker.targetValue ? tracker.targetValue.toString() : '');
+    setEditTags(tracker.tags ? tracker.tags.join(', ') : '');
   };
 
   const cancelEdit = () => {
@@ -53,6 +55,12 @@ export function ManageTrackers({ trackers, onDeleteTracker, onUpdateTracker, log
   const saveEdit = (tracker: Tracker) => {
     if (!editName.trim()) return;
 
+    const parsedTags = editTags
+      .split(/[,\s]+/)
+      .map(t => t.trim())
+      .filter(Boolean)
+      .map(t => t.startsWith('#') ? t.toLowerCase() : `#${t.toLowerCase()}`);
+
     const updated: Tracker = {
       ...tracker,
       name: editName.trim(),
@@ -61,6 +69,7 @@ export function ManageTrackers({ trackers, onDeleteTracker, onUpdateTracker, log
       color: editColor,
       icon: editIcon,
       targetValue: hasTarget && editTargetValue !== '' ? Number(editTargetValue) : undefined,
+      tags: parsedTags.length > 0 ? parsedTags : undefined,
     };
 
     onUpdateTracker(updated);
@@ -123,6 +132,18 @@ export function ManageTrackers({ trackers, onDeleteTracker, onUpdateTracker, log
                       value={editDescription}
                       onChange={(e) => setEditDescription(e.target.value)}
                       className="w-full text-sm rounded-none border border-editorial-dark/20 bg-editorial-bg px-3 py-1.5 focus:border-editorial-accent font-sans outline-hidden resize-none"
+                    />
+                  </div>
+
+                  {/* Tags field */}
+                  <div>
+                    <label className="block text-[10px] font-mono font-medium text-editorial-dark/60 uppercase tracking-widest mb-1">Tags <span className="text-[9px] font-normal italic lowercase">(separated by commas or spaces, e.g. productivity, health)</span></label>
+                    <input
+                      type="text"
+                      value={editTags}
+                      onChange={(e) => setEditTags(e.target.value)}
+                      placeholder="e.g. productivity, health"
+                      className="w-full text-sm rounded-none border border-editorial-dark/20 bg-editorial-bg px-3 py-1.5 focus:border-editorial-accent font-sans outline-hidden"
                     />
                   </div>
 
@@ -259,6 +280,15 @@ export function ManageTrackers({ trackers, onDeleteTracker, onUpdateTracker, log
                         <span className="inline-flex items-center text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest bg-editorial-dark/5 border border-editorial-dark/10 px-2 py-0.5 rounded-none mt-1">
                           {tracker.category} Category
                         </span>
+                        {tracker.tags && tracker.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {tracker.tags.map(tag => (
+                              <span key={tag} className="text-[8px] font-mono font-bold text-editorial-accent bg-editorial-accent-light/40 border border-editorial-accent/20 px-1 py-0.5 rounded-none lowercase">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 

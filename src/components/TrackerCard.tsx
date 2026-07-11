@@ -272,6 +272,15 @@ export function TrackerCard({
               </button>
             </div>
             <p className="text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest mt-0.5">{tracker.category} tracker</p>
+            {tracker.tags && tracker.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {tracker.tags.map(tag => (
+                  <span key={tag} className="text-[8px] font-mono font-bold text-editorial-accent bg-editorial-accent-light/40 border border-editorial-accent/20 px-1 py-0.5 rounded-none lowercase">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

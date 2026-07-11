@@ -82,6 +82,21 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   });
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedTag, setSelectedTag] = useState<string>('all');
+
+  const allTags = useMemo(() => {
+    const tagsSet = new Set<string>();
+    trackers.forEach(t => {
+      if (t.tags) {
+        t.tags.forEach(tag => {
+          if (tag.trim()) {
+            tagsSet.add(tag.trim().toLowerCase());
+          }
+        });
+      }
+    });
+    return Array.from(tagsSet).sort();
+  }, [trackers]);
 
   const [selectedCalendarDayStr, setSelectedCalendarDayStr] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
@@ -121,9 +136,15 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   }, [timeMode, customStartDate, customEndDate]);
 
   const weeklyTrackers = useMemo(() => {
-    if (selectedCategory === 'all') return trackers;
-    return trackers.filter(t => t.category === selectedCategory);
-  }, [trackers, selectedCategory]);
+    let result = trackers;
+    if (selectedCategory !== 'all') {
+      result = result.filter(t => t.category === selectedCategory);
+    }
+    if (selectedTag !== 'all') {
+      result = result.filter(t => t.tags && t.tags.some(tag => tag.toLowerCase() === selectedTag.toLowerCase()));
+    }
+    return result;
+  }, [trackers, selectedCategory, selectedTag]);
 
   const filteredCounterTrackers = useMemo(() => weeklyTrackers.filter(t => t.type === 'counter'), [weeklyTrackers]);
   const filteredNumericTrackers = useMemo(() => weeklyTrackers.filter(t => t.type === 'numeric'), [weeklyTrackers]);
@@ -252,7 +273,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     const monthLogs = logs.filter(l => l.date && l.date.startsWith(selectedMonth));
 
     // Calculate details for each tracker
-    const trackersStats = trackers.map(tracker => {
+    const trackersStats = weeklyTrackers.map(tracker => {
       const trackerLogs = monthLogs.filter(l => l.trackerId === tracker.id);
       const loggedDates = new Set(trackerLogs.map(l => l.date));
       const loggedDaysCount = loggedDates.size;
@@ -327,8 +348,8 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     const totalMonthLogsCount = monthLogs.length;
     
     // Consistency: average logging rate of all trackers
-    const avgLoggingRate = trackers.length > 0
-      ? Math.round((trackersStats.reduce((sum, t) => sum + (t.loggedDaysCount / totalDays), 0) / trackers.length) * 100)
+    const avgLoggingRate = weeklyTrackers.length > 0
+      ? Math.round((trackersStats.reduce((sum, t) => sum + (t.loggedDaysCount / totalDays), 0) / weeklyTrackers.length) * 100)
       : 0;
 
     // Goals met across all trackers with goals
@@ -364,13 +385,12 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       peakDay,
       peakCount,
     };
-  }, [trackers, logs, selectedMonth]);
+  }, [weeklyTrackers, logs, selectedMonth]);
 
   const filteredMonthlyTrackerStats = useMemo(() => {
     if (!monthlyOverviewStats) return [];
-    if (selectedCategory === 'all') return monthlyOverviewStats.trackersStats;
-    return monthlyOverviewStats.trackersStats.filter(t => t.category === selectedCategory);
-  }, [monthlyOverviewStats, selectedCategory]);
+    return monthlyOverviewStats.trackersStats;
+  }, [monthlyOverviewStats]);
 
   const [insights, setInsights] = useState<Insight[]>(() => {
     try {
@@ -415,15 +435,18 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
 
   // Ensure selected tracker is still valid
   const selectedTracker = useMemo(() => {
-    return trackers.find(t => t.id === selectedTrackerId) || trackers[0] || null;
-  }, [trackers, selectedTrackerId]);
+    return weeklyTrackers.find(t => t.id === selectedTrackerId) || weeklyTrackers[0] || null;
+  }, [weeklyTrackers, selectedTrackerId]);
 
   // Set initial selected tracker when trackers load
   React.useEffect(() => {
-    if (trackers.length > 0 && !selectedTrackerId) {
-      setSelectedTrackerId(trackers[0].id);
+    if (weeklyTrackers.length > 0) {
+      const exists = weeklyTrackers.some(t => t.id === selectedTrackerId);
+      if (!exists) {
+        setSelectedTrackerId(weeklyTrackers[0].id);
+      }
     }
-  }, [trackers, selectedTrackerId]);
+  }, [weeklyTrackers, selectedTrackerId]);
 
   // Calculate past dates in YYYY-MM-DD format based on range or custom dates
   const dateRangeList = useMemo(() => {
@@ -1378,7 +1401,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       .slice(0, 10);
   }, [selectedTracker, logs]);
 
-  if (!selectedTracker) {
+  if (trackers.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-16 text-center border border-dashed border-editorial-dark/25 rounded-none bg-editorial-bg">
         <LucideIcon name="BarChart2" className="text-editorial-accent mb-4" size={36} />
@@ -1647,29 +1670,62 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           )}
         </div>
 
-        {/* Category Filter */}
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider shrink-0">Category:</span>
-          <div className="relative">
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-1.5 text-xs font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
-            >
-              <option value="all">All Categories</option>
-              {CATEGORIES.map(cat => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={13} />
+        {/* Category & Tag Filters container */}
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Category Filter */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider shrink-0">Category:</span>
+            <div className="relative">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-1.5 text-xs font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer"
+              >
+                <option value="all">All Categories</option>
+                {CATEGORIES.map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={13} />
+            </div>
+          </div>
+
+          {/* Tag Filter */}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-mono font-medium text-editorial-dark/50 uppercase tracking-wider shrink-0">Tag:</span>
+            <div className="relative">
+              <select
+                value={selectedTag}
+                onChange={(e) => setSelectedTag(e.target.value)}
+                className="appearance-none rounded-none border border-editorial-dark/20 bg-editorial-bg pl-4 pr-10 py-1.5 text-xs font-serif font-medium text-editorial-dark focus:border-editorial-accent transition-all outline-hidden cursor-pointer lowercase"
+              >
+                <option value="all" className="normal-case">All Tags</option>
+                {allTags.map(tag => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-editorial-dark/50 pointer-events-none" size={13} />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 7-Day Activity Consistency Snapshot (Weekly Bar Chart) */}
-      <ActivityConsistencySnapshot logs={logs} />
+      {weeklyTrackers.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-16 text-center border border-dashed border-editorial-dark/25 rounded-none bg-editorial-bg">
+          <Info className="text-editorial-accent mb-4 animate-pulse" size={36} />
+          <h3 className="font-serif text-lg text-editorial-dark font-medium">No Trackers Match Filters</h3>
+          <p className="text-xs text-editorial-dark/60 max-w-xs mt-1 leading-relaxed">
+            There are no active trackers configured under the selected category and tag filters. Try adjusting your filters.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* 7-Day Activity Consistency Snapshot (Weekly Bar Chart) */}
+          <ActivityConsistencySnapshot logs={logs} />
 
       {/* Weekly Text-Based Editorial Progress Summary */}
       <WeeklyTextSummary trackers={trackers} logs={logs} />
@@ -3538,6 +3594,8 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           </table>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

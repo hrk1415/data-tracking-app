@@ -33,6 +33,7 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
   const [targetValue, setTargetValue] = useState<number | ''>('');
   const [selectedColor, setSelectedColor] = useState('emerald');
   const [selectedIcon, setSelectedIcon] = useState('Heart');
+  const [tagsInput, setTagsInput] = useState('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -69,6 +70,12 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
       return;
     }
 
+    const parsedTags = tagsInput
+      .split(/[,\s]+/)
+      .map(t => t.trim())
+      .filter(Boolean)
+      .map(t => t.startsWith('#') ? t.toLowerCase() : `#${t.toLowerCase()}`);
+
     const newTracker: Tracker = {
       id: `tracker-${Date.now()}`,
       name: name.trim(),
@@ -80,6 +87,7 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
       icon: selectedIcon,
       targetValue: hasTarget && targetValue !== '' ? Number(targetValue) : undefined,
       createdAt: new Date().toISOString(),
+      tags: parsedTags.length > 0 ? parsedTags : undefined,
     };
 
     onAdd(newTracker);
@@ -97,6 +105,7 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
     setTargetValue('');
     setSelectedColor('emerald');
     setSelectedIcon('Heart');
+    setTagsInput('');
     setErrors({});
   };
 
@@ -183,6 +192,21 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full rounded-none border border-editorial-dark/20 bg-editorial-bg px-4 py-2 text-sm outline-hidden focus:border-editorial-accent transition-all resize-none font-sans"
+                />
+              </div>
+
+              {/* Tags */}
+              <div>
+                <label htmlFor="tracker-tags" className="block text-[10px] font-mono font-medium text-editorial-dark/60 uppercase tracking-widest mb-1.5">
+                  Tags <span className="text-editorial-dark/40 font-normal italic lowercase">(optional, separated by commas or spaces, e.g. #productivity, #health)</span>
+                </label>
+                <input
+                  id="tracker-tags"
+                  type="text"
+                  placeholder="e.g. productivity, health, morning"
+                  value={tagsInput}
+                  onChange={(e) => setTagsInput(e.target.value)}
+                  className="w-full rounded-none border border-editorial-dark/20 bg-editorial-bg px-4 py-2.5 text-sm font-sans outline-hidden focus:border-editorial-accent transition-all"
                 />
               </div>
 

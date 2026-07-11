@@ -16,6 +16,7 @@ export interface Tracker {
   targetValue?: number; // Optional daily goal/target
   description?: string;
   createdAt: string;
+  tags?: string[]; // Optional tags for tracking/grouping, e.g. #productivity, #health
 }
 
 export interface LogEntry {
