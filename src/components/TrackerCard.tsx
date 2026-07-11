@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Tracker, LogEntry, COLOR_MAP } from '../types';
 import { LucideIcon } from './LucideIcon';
-import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown, LineChart as LineChartIcon, X, Info } from 'lucide-react';
+import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown, LineChart as LineChartIcon, X, Info, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 
@@ -248,6 +248,70 @@ export function TrackerCard({
     ];
   }, [currentValue, target]);
 
+  const handleExportCSV = () => {
+    // Filter and sort logs for this specific tracker
+    const trackerLogs = logs
+      .filter(l => l.trackerId === tracker.id)
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+    if (trackerLogs.length === 0) {
+      alert("No log history found for this tracker to export.");
+      return;
+    }
+
+    // Helper to escape special CSV characters and handle quotes
+    const escapeCSV = (val: string | number | undefined | null) => {
+      if (val === undefined || val === null) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Define the headers
+    const headers = ['Date', 'Value', 'Unit', 'Tracker Type', 'Note', 'Timestamp', 'Tracker Name', 'Category'];
+    
+    // Map the logs to CSV rows
+    const rows = trackerLogs.map(log => {
+      let displayValue = String(log.value);
+      if (tracker.type === 'boolean') {
+        displayValue = log.value === 1 ? 'Yes' : 'No';
+      } else if (tracker.type === 'rating') {
+        displayValue = `${log.value} Star${log.value !== 1 ? 's' : ''}`;
+      }
+
+      return [
+        escapeCSV(log.date),
+        escapeCSV(displayValue),
+        escapeCSV(tracker.unit || ''),
+        escapeCSV(tracker.type),
+        escapeCSV(log.note || ''),
+        escapeCSV(log.timestamp),
+        escapeCSV(tracker.name),
+        escapeCSV(tracker.category),
+      ];
+    });
+
+    // Combine headers and rows
+    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+
+    // Trigger download of CSV file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    
+    const safeTrackerName = tracker.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${safeTrackerName}_history_${todayStr}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Custom quick increment buttons based on unit types
   const getQuickIncrements = () => {
     const unit = tracker.unit?.toLowerCase();
@@ -330,6 +394,15 @@ export function TrackerCard({
                 title="View 30-Day History"
               >
                 <LineChartIcon size={13} />
+              </button>
+              <button
+                id={`export-csv-btn-${tracker.id}`}
+                type="button"
+                onClick={handleExportCSV}
+                className="text-editorial-dark/35 hover:text-editorial-accent p-0.5 hover:bg-editorial-accent-light/40 transition-colors shrink-0 cursor-pointer"
+                title="Export History to CSV"
+              >
+                <Download size={13} />
               </button>
             </div>
             <p className="text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest mt-0.5">{tracker.category} tracker</p>
