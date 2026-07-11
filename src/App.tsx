@@ -11,6 +11,7 @@ import { importLogsFromCSV, parseCSV, ColumnMapping } from './utils/csvParser';
 import { AddTrackerModal } from './components/AddTrackerModal';
 import { CSVMappingModal } from './components/CSVMappingModal';
 import { TrackerCard } from './components/TrackerCard';
+import { calculateTrendAlert } from './utils/trendAlerts';
 import { TrackerAnalytics } from './components/TrackerAnalytics';
 import { LogHistory } from './components/LogHistory';
 import { ManageTrackers } from './components/ManageTrackers';
@@ -54,6 +55,7 @@ import {
   Check,
   Search,
   AlertTriangle,
+  AlertCircle,
   HelpCircle,
   Filter
 } from 'lucide-react';
@@ -523,6 +525,19 @@ export default function App() {
       return matchesSearch && matchesTag;
     });
   }, [trackers, dashboardSearchQuery, dashboardSelectedTag]);
+
+  // Calculate all active trend alerts on the selected date
+  const activeTrendAlerts = useMemo(() => {
+    return trackers
+      .map(tracker => {
+        const result = calculateTrendAlert(tracker, logs, selectedDate);
+        return {
+          tracker,
+          ...result
+        };
+      })
+      .filter(item => item.isAlert);
+  }, [trackers, logs, selectedDate]);
 
   // Daily statistics for selected date
   const dailyStats = useMemo(() => {
@@ -2077,6 +2092,56 @@ export default function App() {
 
                 {/* Daily Motivational Quote Widget */}
                 <MotivationalQuote />
+
+                {/* Trend Alerts Dashboard Section */}
+                {activeTrendAlerts.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-editorial-bg p-5 rounded-none border border-editorial-dark/15 border-l-2 border-l-amber-500 space-y-3"
+                  >
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="text-amber-600 animate-pulse" size={16} />
+                        <h4 className="text-[10px] font-mono text-editorial-accent tracking-widest uppercase font-semibold">Active Trend Alerts</h4>
+                      </div>
+                      <span className="text-[10px] font-mono text-amber-800 bg-amber-500/10 px-2 py-0.5 border border-amber-500/15">
+                        {activeTrendAlerts.length} significant {activeTrendAlerts.length === 1 ? 'shift' : 'shifts'} detected today
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mt-2">
+                      {activeTrendAlerts.map(({ tracker, percentChange, average, currentValue, direction }) => (
+                        <div
+                          key={tracker.id}
+                          className="flex items-start gap-3 border border-editorial-dark/10 p-3 bg-editorial-dark/[0.01] hover:bg-editorial-dark/[0.03] transition-all"
+                        >
+                          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-none text-white ${
+                            COLOR_MAP[tracker.color]?.bg || 'bg-editorial-emerald'
+                          }`}>
+                            <LucideIcon name={tracker.icon} size={15} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <span className="font-serif font-semibold text-xs text-editorial-dark truncate leading-tight">
+                                {tracker.name}
+                              </span>
+                              <span className={`text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 border rounded-none ${
+                                direction === 'increase'
+                                  ? 'bg-amber-500/15 border-amber-500/25 text-amber-900'
+                                  : 'bg-rose-500/15 border-rose-500/25 text-rose-900'
+                              }`}>
+                                {direction === 'increase' ? '▲' : '▼'} {Math.abs(percentChange)}% Shift
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-editorial-dark/65 font-sans mt-1 leading-relaxed">
+                              Today's value <strong className="font-mono text-editorial-accent">{currentValue}</strong> is {direction === 'increase' ? '20%+' : '20%+'} {direction === 'increase' ? 'higher' : 'lower'} than your 7-day rolling average of <strong className="font-mono">{Math.round(average * 10) / 10}</strong>.
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
 
                 {/* Daily Reminder Push-Notification-Style Banner */}
                 <AnimatePresence>

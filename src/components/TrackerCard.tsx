@@ -9,6 +9,7 @@ import { LucideIcon } from './LucideIcon';
 import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown, LineChart as LineChartIcon, X, Info, Download, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
+import { calculateTrendAlert } from '../utils/trendAlerts';
 
 interface TrackerCardProps {
   key?: string;
@@ -292,6 +293,11 @@ export function TrackerCard({
     };
   }, [tracker, logs, selectedDate, currentValue]);
 
+  // Calculate Trend Alert based on 7-day rolling average deviation of > 20%
+  const trendAlert = React.useMemo(() => {
+    return calculateTrendAlert(tracker, logs, selectedDate);
+  }, [tracker, logs, selectedDate]);
+
   const colorStyles = COLOR_MAP[tracker.color] || COLOR_MAP.emerald;
 
   // Percentage completion for progress bars
@@ -449,6 +455,26 @@ export function TrackerCard({
           <div>
             <div className="flex items-center gap-1.5">
               <h4 className="font-serif font-medium text-base text-editorial-dark line-clamp-1 leading-tight">{tracker.name}</h4>
+              {trendAlert.isAlert && (
+                <div 
+                  className={`relative flex items-center justify-center h-5 w-5 rounded-none cursor-help shrink-0 ${
+                    trendAlert.direction === 'increase'
+                      ? 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20'
+                      : 'bg-rose-500/10 text-rose-600 hover:bg-rose-500/20'
+                  }`}
+                  title={`Trend Alert: Today's value (${currentValue}) is ${trendAlert.direction === 'increase' ? 'up' : 'down'} by ${Math.abs(trendAlert.percentChange)}% compared to your 7-day rolling average of ${Math.round(trendAlert.average * 10) / 10}.`}
+                >
+                  <AlertCircle size={12} className="stroke-[2.5px] animate-pulse" />
+                  <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                      trendAlert.direction === 'increase' ? 'bg-amber-500' : 'bg-rose-500'
+                    }`}></span>
+                    <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
+                      trendAlert.direction === 'increase' ? 'bg-amber-500' : 'bg-rose-500'
+                    }`}></span>
+                  </span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setIsHistoryModalOpen(true)}
@@ -660,6 +686,15 @@ export function TrackerCard({
             ) : (
               <span className="text-[10px] font-sans italic text-editorial-dark/40 mt-0.5">No recent data</span>
             )}
+          </div>
+
+          <div className="flex flex-col border-l border-editorial-dark/10 pl-4">
+            <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-editorial-dark/45">
+              7-Day Avg
+            </span>
+            <div className="flex items-center gap-1.5 mt-0.5 text-editorial-dark font-sans text-xs font-semibold" title="7-day rolling average of logged values (excluding today)">
+              <span>{Math.round(trendAlert.average * 10) / 10}{tracker.unit ? ` ${tracker.unit}` : ''}</span>
+            </div>
           </div>
         </div>
 
