@@ -108,6 +108,13 @@ export default function App() {
   const [lastImportedLogIds, setLastImportedLogIds] = useState<string[]>([]);
   const [isClearLogsConfirmOpen, setIsClearLogsConfirmOpen] = useState(false);
   const [csvRowFilterQuery, setCsvRowFilterQuery] = useState('');
+  const [selectedCSVFileName, setSelectedCSVFileName] = useState<string | null>(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+
+  // Shared state for filtering history logs, so we can export currently visible logs
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyFilterTrackerId, setHistoryFilterTrackerId] = useState('all');
+  const [historyFilterCategory, setHistoryFilterCategory] = useState('all');
 
   // Reflection editor state
   const [reflectionInput, setReflectionInput] = useState<string>('');
@@ -837,6 +844,7 @@ export default function App() {
   };
 
   const processCSVFile = (file: File) => {
+    setSelectedCSVFileName(file.name);
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result;
@@ -845,6 +853,7 @@ export default function App() {
         if (parsed.length === 0) {
           setCsvImportStatus('error');
           setCsvImportMessage('Error: CSV file is empty.');
+          setSelectedCSVFileName(null);
           const timer = setTimeout(() => {
             setCsvImportStatus(null);
             setCsvImportMessage('');
@@ -855,6 +864,7 @@ export default function App() {
         if (parsed.length < 2) {
           setCsvImportStatus('error');
           setCsvImportMessage('Error: CSV must contain a header row and at least one data row.');
+          setSelectedCSVFileName(null);
           const timer = setTimeout(() => {
             setCsvImportStatus(null);
             setCsvImportMessage('');
@@ -873,6 +883,7 @@ export default function App() {
           if (dataRows.length === 0) {
             setCsvImportStatus('error');
             setCsvImportMessage(`Error: No rows match filter "${csvRowFilterQuery}".`);
+            setSelectedCSVFileName(null);
             const timer = setTimeout(() => {
               setCsvImportStatus(null);
               setCsvImportMessage('');
@@ -898,7 +909,7 @@ export default function App() {
 
         setPendingCSVHeaders(headerRow);
         setPendingCSVText(finalCSVText);
-        setIsCSVMappingModalOpen(true);
+        // Do NOT open the mapping modal automatically anymore!
       }
     };
     reader.readAsText(file);
@@ -921,6 +932,11 @@ export default function App() {
       setCsvImportStatus('success');
       setCsvImportMessage(`Successfully imported ${result.importedCount} logs${filterSuffix}!`);
       
+      // Reset selected CSV file states
+      setSelectedCSVFileName(null);
+      setPendingCSVText('');
+      setPendingCSVHeaders([]);
+
       // Reset status after 5 seconds
       const timer = setTimeout(() => {
         setCsvImportStatus(null);
@@ -1076,6 +1092,124 @@ export default function App() {
     const link = document.createElement('a');
     link.href = url;
     link.download = `data_tracker_logs_${selectedDate}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getCurrentlyVisibleLogs = () => {
+    // Sort logs descending by timestamp or date, matching history tab
+    const sortedLogs = [...logs].sort((a, b) => {
+      const dateA = new Date(a.timestamp || a.date).getTime();
+      const dateB = new Date(b.timestamp || b.date).getTime();
+      return dateB - dateA;
+    });
+
+    if (currentTab === 'history') {
+      return sortedLogs.filter(log => {
+        const tracker = trackers.find(t => t.id === log.trackerId);
+        if (!tracker) return false;
+
+        if (historyFilterTrackerId !== 'all' && log.trackerId !== historyFilterTrackerId) {
+          return false;
+        }
+
+        if (historyFilterCategory !== 'all' && tracker.category !== historyFilterCategory) {
+          return false;
+        }
+
+        if (historySearchQuery.trim()) {
+          const query = historySearchQuery.toLowerCase();
+          const matchesName = tracker.name.toLowerCase().includes(query);
+          const matchesNote = log.note?.toLowerCase().includes(query) || false;
+
+          const dNeutral = new Date(log.date + 'T12:00:00');
+          const formattedShort = dNeutral.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          }).toLowerCase();
+          const formattedLong = dNeutral.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+          }).toLowerCase();
+
+          const matchesDate = log.date.includes(query) || 
+                              formattedShort.includes(query) || 
+                              formattedLong.includes(query);
+
+          if (!matchesName && !matchesNote && !matchesDate) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+    } else if (currentTab === 'dashboard') {
+      // Return logs for selected date (chronological)
+      return logs.filter(l => l.date === selectedDate).sort((a, b) => {
+        return (a.timestamp || '').localeCompare(b.timestamp || '');
+      });
+    } else {
+      // Return all logs sorted chronologically
+      return [...logs].sort((a, b) => {
+        const dateCompare = a.date.localeCompare(b.date);
+        if (dateCompare !== 0) return dateCompare;
+        return (a.timestamp || '').localeCompare(b.timestamp || '');
+      });
+    }
+  };
+
+  const handleExportVisibleCSV = () => {
+    const visibleLogsList = getCurrentlyVisibleLogs();
+    if (visibleLogsList.length === 0) return;
+
+    const escapeCSV = (str: any) => {
+      if (str === null || str === undefined) return '';
+      const stringified = String(str);
+      if (stringified.includes(',') || stringified.includes('"') || stringified.includes('\n') || stringified.includes('\r')) {
+        return `"${stringified.replace(/"/g, '""')}"`;
+      }
+      return stringified;
+    };
+
+    const headers = ['Date', 'Tracker Name', 'Category', 'Value', 'Unit', 'Goal', 'Notes', 'Logged At'];
+    
+    const rows = visibleLogsList.map(l => {
+      const tracker = trackers.find(t => t.id === l.trackerId);
+      return [
+        escapeCSV(l.date),
+        escapeCSV(tracker ? tracker.name : 'Unknown Tracker'),
+        escapeCSV(tracker ? tracker.category : ''),
+        escapeCSV(l.value),
+        escapeCSV(tracker ? tracker.unit : ''),
+        escapeCSV(tracker?.targetValue !== undefined ? tracker.targetValue : ''),
+        escapeCSV(l.note || ''),
+        escapeCSV(l.timestamp || '')
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    let filename = `data_tracker_logs_${selectedDate}.csv`;
+    if (currentTab === 'history') {
+      const isFiltered = historyFilterTrackerId !== 'all' || historyFilterCategory !== 'all' || historySearchQuery.trim() !== '';
+      filename = isFiltered ? 'data_tracker_logs_history_filtered.csv' : 'data_tracker_logs_history_all.csv';
+    } else if (currentTab !== 'dashboard') {
+      filename = 'data_tracker_logs_all.csv';
+    }
+    
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -1387,72 +1521,147 @@ export default function App() {
 
                  {/* Import CSV Logs Button & Format Helper Wrapper */}
                 <div className="relative inline-flex items-center gap-1.5 shrink-0">
-                  <label
-                    id="import-csv-logs-button"
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`relative flex items-center gap-1.5 font-semibold px-4 py-2 rounded-none text-xs transition-all cursor-pointer select-none border ${
-                      isDraggingCSV
-                        ? 'bg-editorial-orange border-editorial-orange text-white scale-105 shadow-md'
-                        : csvImportStatus === 'success'
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
-                        : csvImportStatus === 'error'
-                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-700'
-                        : csvImportStatus === 'warning'
-                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-700'
-                        : 'bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border-editorial-orange/20 text-editorial-orange'
-                    }`}
-                    title={csvImportStatus ? csvImportMessage : "Bulk-populate logs from an external CSV file (drag & drop supported)"}
-                  >
-                    <>
-                      {csvImportStatus === 'success' ? (
-                        <CheckCircle2 size={14} className="text-emerald-600" />
-                      ) : csvImportStatus === 'error' ? (
-                        <X size={14} className="text-rose-600" />
-                      ) : csvImportStatus === 'warning' ? (
-                        <AlertTriangle size={14} className="text-amber-600" />
-                      ) : (
-                        <Upload size={14} className="text-editorial-orange" />
-                      )}
-                      {csvImportStatus === 'success' ? (
-                        <span>Import Success!</span>
-                      ) : csvImportStatus === 'error' ? (
-                        <span>Import Error!</span>
-                      ) : csvImportStatus === 'warning' ? (
-                        <span>Invalid File!</span>
-                      ) : (
-                        <span>Import CSV Logs</span>
-                      )}
-                    </>
-                    <input
-                      type="file"
-                      accept=".csv"
-                      onChange={handleImportCSVFile}
-                      className="hidden"
-                    />
-                    
-                    {/* Visual Overlay for Drag & Drop Action */}
-                    <AnimatePresence>
-                      {isDraggingCSV && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute inset-0 z-20 bg-editorial-orange text-white flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-center px-4 py-2 border border-dashed border-white pointer-events-none"
-                        >
-                          <Upload size={13} className="animate-bounce" />
-                          <span>Drag & Drop File Here</span>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                  {selectedCSVFileName ? (
+                    <div
+                      id="import-csv-logs-button"
+                      className="relative flex items-center gap-2.5 border border-editorial-orange/20 bg-editorial-orange-light/5 px-3 py-1.5"
+                    >
+                      <div className="flex items-center gap-1 text-editorial-dark max-w-[130px] md:max-w-[160px] truncate" title={selectedCSVFileName}>
+                        <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                        <span className="font-mono text-[11px] truncate font-semibold">{selectedCSVFileName}</span>
+                      </div>
 
-                    {/* Transparent drag cover to prevent child elements from intercepting drag events and causing flicker */}
-                    {isDraggingCSV && (
-                      <div className="absolute inset-0 z-10 pointer-events-none" />
-                    )}
-                  </label>
+                      {/* Preview Data Button */}
+                      <button
+                        type="button"
+                        id="preview-csv-data-button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setIsPreviewModalOpen(true);
+                        }}
+                        className="flex items-center gap-1 bg-editorial-orange-light/25 hover:bg-editorial-orange-light/40 text-editorial-orange border border-editorial-orange/25 px-2.5 py-1 text-[11px] font-mono uppercase font-bold tracking-wider transition-colors cursor-pointer"
+                        title="Preview first 5 rows of selected CSV"
+                      >
+                        <Eye size={12} />
+                        <span>Preview Data</span>
+                      </button>
+
+                      {/* Map & Import Button */}
+                      <button
+                        type="button"
+                        id="open-mapping-modal-button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setIsCSVMappingModalOpen(true);
+                        }}
+                        className="flex items-center gap-1 bg-editorial-orange hover:bg-editorial-orange/90 text-white border border-editorial-orange px-2.5 py-1 text-[11px] font-mono uppercase font-bold tracking-wider transition-colors cursor-pointer"
+                        title="Map CSV columns and import data"
+                      >
+                        <Upload size={12} />
+                        <span>Map & Import</span>
+                      </button>
+
+                      {/* Clear selection Button */}
+                      <button
+                        type="button"
+                        id="clear-selected-csv-button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSelectedCSVFileName(null);
+                          setPendingCSVText('');
+                          setPendingCSVHeaders([]);
+                        }}
+                        className="p-1 hover:bg-rose-500/10 hover:text-rose-600 text-editorial-dark/40 cursor-pointer transition-colors"
+                        title="Clear selected file"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label
+                      id="import-csv-logs-button"
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`relative flex items-center gap-1.5 font-semibold px-4 py-2 rounded-none text-xs transition-all cursor-pointer select-none border ${
+                        isDraggingCSV
+                          ? 'bg-editorial-orange border-editorial-orange text-white scale-105 shadow-md'
+                          : csvImportStatus === 'success'
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
+                          : csvImportStatus === 'error'
+                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-700'
+                          : csvImportStatus === 'warning'
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-700'
+                          : 'bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border-editorial-orange/20 text-editorial-orange'
+                      }`}
+                      title={csvImportStatus ? csvImportMessage : "Bulk-populate logs from an external CSV file (drag & drop supported)"}
+                    >
+                      <>
+                        {csvImportStatus === 'success' ? (
+                          <CheckCircle2 size={14} className="text-emerald-600" />
+                        ) : csvImportStatus === 'error' ? (
+                          <X size={14} className="text-rose-600" />
+                        ) : csvImportStatus === 'warning' ? (
+                          <AlertTriangle size={14} className="text-amber-600" />
+                        ) : (
+                          <Upload size={14} className="text-editorial-orange" />
+                        )}
+                        {csvImportStatus === 'success' ? (
+                          <span>Import Success!</span>
+                        ) : csvImportStatus === 'error' ? (
+                          <span>Import Error!</span>
+                        ) : csvImportStatus === 'warning' ? (
+                          <span>Invalid File!</span>
+                        ) : (
+                          <span>Import CSV Logs</span>
+                        )}
+                      </>
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleImportCSVFile}
+                        className="hidden"
+                      />
+                      
+                      {/* Visual Overlay for Drag & Drop Action */}
+                      <AnimatePresence>
+                        {isDraggingCSV && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute inset-0 z-20 bg-editorial-orange text-white flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-center px-4 py-2 border border-dashed border-white pointer-events-none"
+                          >
+                            <Upload size={13} className="animate-bounce" />
+                            <span>Drag & Drop File Here</span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Transparent drag cover to prevent child elements from intercepting drag events and causing flicker */}
+                      {isDraggingCSV && (
+                        <div className="absolute inset-0 z-10 pointer-events-none" />
+                      )}
+                    </label>
+                  )}
+
+                  {/* Export CSV Button */}
+                  {logs.length > 0 && (
+                    <button
+                      type="button"
+                      id="export-csv-button-import-area"
+                      onClick={handleExportVisibleCSV}
+                      className="flex items-center gap-1.5 bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border border-editorial-orange/20 text-editorial-orange font-semibold px-4 py-2 rounded-none text-xs transition-all cursor-pointer select-none"
+                      title="Download currently visible logs as a formatted CSV file"
+                    >
+                      <Download size={14} className="text-editorial-orange" />
+                      <span>Export CSV</span>
+                    </button>
+                  )}
 
                   {/* Batch Delete / Revert Imported Logs Button */}
                   <AnimatePresence>
@@ -2500,16 +2709,22 @@ export default function App() {
 
                   {trackers.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {trackers.map((tracker) => (
-                        <TrackerCard
-                          key={tracker.id}
-                          tracker={tracker}
-                          logs={logs}
-                          selectedDate={selectedDate}
-                          onLogValue={handleLogValue}
-                          onDeleteLog={handleDeleteLog}
-                        />
-                      ))}
+                      {trackers.map((tracker) => {
+                        const dateReflection = reflections.find(r => r.date === selectedDate);
+                        const goalNote = dateReflection?.goalNotes?.[tracker.id] || '';
+                        return (
+                          <TrackerCard
+                            key={tracker.id}
+                            tracker={tracker}
+                            logs={logs}
+                            selectedDate={selectedDate}
+                            onLogValue={handleLogValue}
+                            onDeleteLog={handleDeleteLog}
+                            goalNote={goalNote}
+                            onSaveGoalNote={handleSaveGoalNote}
+                          />
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center p-16 text-center border border-dashed border-editorial-dark/25 rounded-none bg-editorial-bg space-y-5">
@@ -2560,6 +2775,12 @@ export default function App() {
                   logs={logs}
                   onDeleteLog={handleDeleteLog}
                   onUpdateLog={handleUpdateLog}
+                  searchQuery={historySearchQuery}
+                  setSearchQuery={setHistorySearchQuery}
+                  filterTrackerId={historyFilterTrackerId}
+                  setFilterTrackerId={setHistoryFilterTrackerId}
+                  filterCategory={historyFilterCategory}
+                  setFilterCategory={setHistoryFilterCategory}
                 />
               </motion.div>
             )}
@@ -2679,6 +2900,136 @@ export default function App() {
                   <Trash2 size={13} />
                   <span>Clear All Logs</span>
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CSV Preview Data Modal overlay */}
+      <AnimatePresence>
+        {isPreviewModalOpen && pendingCSVText && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPreviewModalOpen(false)}
+              className="absolute inset-0 bg-editorial-dark/40 backdrop-blur-sm"
+            />
+
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 15 }}
+              transition={{ duration: 0.25 }}
+              className="relative w-full max-w-3xl overflow-hidden rounded-none bg-editorial-bg border border-editorial-dark/15 shadow-2xl flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-editorial-dark/15 px-6 py-4 bg-editorial-orange-light/5">
+                <div className="flex items-center gap-2 text-editorial-orange">
+                  <Eye size={18} />
+                  <h3 className="font-serif text-base font-semibold tracking-tight">
+                    CSV Data Preview: <span className="font-mono text-xs font-normal text-editorial-dark">{selectedCSVFileName}</span>
+                  </h3>
+                </div>
+                <button
+                  id="close-preview-modal-button"
+                  type="button"
+                  onClick={() => setIsPreviewModalOpen(false)}
+                  className="text-editorial-dark/45 hover:text-editorial-dark transition-colors cursor-pointer"
+                  aria-label="Close modal"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 space-y-4 overflow-y-auto">
+                <p className="text-xs text-editorial-dark/70 font-sans">
+                  Verifying the first 5 rows of data. Filtered by row keywords if specified.
+                </p>
+
+                {(() => {
+                  const rows = parseCSV(pendingCSVText);
+                  if (rows.length === 0) {
+                    return (
+                      <div className="text-center py-6 text-xs text-editorial-dark/40 italic">
+                        No rows found to preview.
+                      </div>
+                    );
+                  }
+                  const headers = rows[0];
+                  const previewData = rows.slice(1, 6);
+
+                  return (
+                    <div className="overflow-x-auto border border-editorial-dark/10 max-h-80">
+                      <table className="w-full text-left border-collapse text-[11px] font-sans">
+                        <thead>
+                          <tr className="bg-editorial-dark/[0.04] border-b border-editorial-dark/15">
+                            <th className="p-2.5 font-mono text-[9px] uppercase tracking-wider text-editorial-dark/50 w-12 text-center">Row</th>
+                            {headers.map((header, i) => (
+                              <th key={i} className="p-2.5 font-semibold text-editorial-dark border-l border-editorial-dark/10 first:border-l-0">
+                                {header || `Column ${i + 1}`}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewData.length === 0 ? (
+                            <tr>
+                              <td colSpan={headers.length + 1} className="p-4 text-center text-editorial-dark/40 italic">
+                                No data rows found.
+                              </td>
+                            </tr>
+                          ) : (
+                            previewData.map((row, rowIndex) => (
+                              <tr key={rowIndex} className="border-b border-editorial-dark/5 last:border-b-0 hover:bg-editorial-dark/[0.01]">
+                                <td className="p-2.5 text-center font-mono text-editorial-dark/40 border-r border-editorial-dark/10 bg-editorial-dark/[0.02]">{rowIndex + 1}</td>
+                                {headers.map((_, colIndex) => (
+                                  <td key={colIndex} className="p-2.5 text-editorial-dark/85 border-l border-editorial-dark/10 first:border-l-0 whitespace-nowrap overflow-hidden max-w-[200px] truncate font-mono" title={row[colIndex] || ''}>
+                                    {row[colIndex] !== undefined && row[colIndex] !== '' ? row[colIndex] : <span className="text-editorial-dark/25 italic">empty</span>}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between border-t border-editorial-dark/10 bg-editorial-dark/[0.02] px-6 py-4">
+                <span className="text-[10px] font-mono text-editorial-dark/40 uppercase">
+                  First 5 Data Rows Shown
+                </span>
+                <div className="flex items-center gap-3">
+                  <button
+                    id="close-preview-button"
+                    type="button"
+                    onClick={() => setIsPreviewModalOpen(false)}
+                    className="rounded-none border border-editorial-dark/20 bg-editorial-bg px-4 py-2 text-xs font-mono uppercase tracking-wider text-editorial-dark hover:bg-editorial-accent-light/40 transition-colors cursor-pointer"
+                  >
+                    Close Preview
+                  </button>
+                  <button
+                    id="preview-continue-mapping-button"
+                    type="button"
+                    onClick={() => {
+                      setIsPreviewModalOpen(false);
+                      setIsCSVMappingModalOpen(true);
+                    }}
+                    className="rounded-none bg-editorial-orange text-white px-5 py-2 text-xs font-mono uppercase tracking-wider hover:bg-editorial-orange/90 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Upload size={13} />
+                    <span>Continue to Mapping</span>
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

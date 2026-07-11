@@ -17,9 +17,19 @@ interface TrackerCardProps {
   selectedDate: string;
   onLogValue: (trackerId: string, value: number, note?: string) => void;
   onDeleteLog?: (logId: string) => void;
+  goalNote?: string;
+  onSaveGoalNote?: (date: string, trackerId: string, noteText: string) => void;
 }
 
-export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteLog }: TrackerCardProps) {
+export function TrackerCard({ 
+  tracker, 
+  logs, 
+  selectedDate, 
+  onLogValue, 
+  onDeleteLog,
+  goalNote,
+  onSaveGoalNote
+}: TrackerCardProps) {
   // Filter logs for this tracker on the selected date
   const trackerLogs = logs.filter(l => l.trackerId === tracker.id && l.date === selectedDate);
 
@@ -749,6 +759,23 @@ export function TrackerCard({ tracker, logs, selectedDate, onLogValue, onDeleteL
             </div>
           )}
         </AnimatePresence>
+      </div>
+
+      {/* Daily Intention / Goal Note */}
+      <div className="mt-3 border-t border-editorial-dark/10 pt-3">
+        <div className="flex items-center gap-1.5 mb-1">
+          <LucideIcon name="Sparkles" size={11} className="text-editorial-accent shrink-0 animate-pulse" />
+          <span className="text-[9px] font-mono uppercase tracking-wider text-editorial-dark/55">
+            Daily Intention
+          </span>
+        </div>
+        <input
+          type="text"
+          value={goalNote || ''}
+          onChange={(e) => onSaveGoalNote?.(selectedDate, tracker.id, e.target.value)}
+          placeholder="Set a focus or daily intention..."
+          className="w-full bg-transparent border-0 border-b border-editorial-dark/15 hover:border-editorial-dark/30 focus:border-editorial-accent p-1 text-[11px] font-serif italic text-editorial-dark outline-hidden focus:ring-0 placeholder:text-editorial-dark/30 placeholder:italic transition-all"
+        />
       </div>
 
       {/* 30-Day History Modal */}

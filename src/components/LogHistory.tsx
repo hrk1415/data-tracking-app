@@ -24,12 +24,39 @@ interface LogHistoryProps {
   logs: LogEntry[];
   onDeleteLog: (logId: string) => void;
   onUpdateLog: (logId: string, updatedValue: number, updatedNote?: string) => void;
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
+  filterTrackerId?: string;
+  setFilterTrackerId?: (id: string) => void;
+  filterCategory?: string;
+  setFilterCategory?: (cat: string) => void;
 }
 
-export function LogHistory({ trackers, logs, onDeleteLog, onUpdateLog }: LogHistoryProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterTrackerId, setFilterTrackerId] = useState('all');
-  const [filterCategory, setFilterCategory] = useState('all');
+export function LogHistory({
+  trackers,
+  logs,
+  onDeleteLog,
+  onUpdateLog,
+  searchQuery: externalSearchQuery,
+  setSearchQuery: externalSetSearchQuery,
+  filterTrackerId: externalFilterTrackerId,
+  setFilterTrackerId: externalSetFilterTrackerId,
+  filterCategory: externalFilterCategory,
+  setFilterCategory: externalSetFilterCategory,
+}: LogHistoryProps) {
+  // Inline fallbacks if external controls aren't provided
+  const [internalSearchQuery, setInternalSearchQuery] = useState('');
+  const [internalFilterTrackerId, setInternalFilterTrackerId] = useState('all');
+  const [internalFilterCategory, setInternalFilterCategory] = useState('all');
+
+  const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
+  const setSearchQuery = externalSetSearchQuery !== undefined ? externalSetSearchQuery : setInternalSearchQuery;
+
+  const filterTrackerId = externalFilterTrackerId !== undefined ? externalFilterTrackerId : internalFilterTrackerId;
+  const setFilterTrackerId = externalSetFilterTrackerId !== undefined ? externalSetFilterTrackerId : setInternalFilterTrackerId;
+
+  const filterCategory = externalFilterCategory !== undefined ? externalFilterCategory : internalFilterCategory;
+  const setFilterCategory = externalSetFilterCategory !== undefined ? externalSetFilterCategory : setInternalFilterCategory;
 
   // Inline editing state
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
