@@ -485,7 +485,12 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   const categoryBaselineStats = useMemo(() => {
     return CATEGORIES.map(category => {
       // Find trackers in this category
-      const catTrackers = trackers.filter(t => t.category === category.id);
+      let catTrackers = trackers.filter(t => t.category === category.id);
+      
+      // Filter by tag if selected
+      if (selectedTag !== 'all') {
+        catTrackers = catTrackers.filter(t => t.tags && t.tags.some(tag => tag.toLowerCase() === selectedTag.toLowerCase()));
+      }
       
       const trackerStats = catTrackers.map(tracker => {
         let totalValue = 0;
@@ -559,7 +564,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
         totalTrackers: catTrackers.length,
       };
     });
-  }, [trackers, logs, dateRangeList]);
+  }, [trackers, logs, dateRangeList, selectedTag]);
 
   // Calculate chart data for selected tracker
   const chartData = useMemo(() => {
@@ -700,16 +705,42 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
   // Memoize heatmap data for all trackers
   const trackerHeatmaps = useMemo(() => {
     const today = new Date();
-    
-    // Find Monday of the current week
-    const currentDay = today.getDay(); // 0 = Sun, 1 = Mon, ...
-    const currentWeekdayIndex = currentDay === 0 ? 6 : currentDay - 1;
-    const currentMonday = new Date(today);
-    currentMonday.setDate(today.getDate() - currentWeekdayIndex);
-    
-    // Find Monday of Week 1 (3 weeks ago)
-    const startMonday = new Date(currentMonday);
-    startMonday.setDate(currentMonday.getDate() - 21);
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Determine the startMonday and endSunday based on dateRangeList
+    let startMonday: Date;
+    let numWeeks = 4; // default
+
+    if (dateRangeList && dateRangeList.length > 0) {
+      const firstDate = new Date(dateRangeList[0] + 'T12:00:00');
+      // Find Monday of the week containing firstDate
+      const firstDay = firstDate.getDay(); // 0 = Sun, 1 = Mon, ...
+      const firstWeekdayIndex = firstDay === 0 ? 6 : firstDay - 1;
+      startMonday = new Date(firstDate);
+      startMonday.setDate(firstDate.getDate() - firstWeekdayIndex);
+
+      const lastDate = new Date(dateRangeList[dateRangeList.length - 1] + 'T12:00:00');
+      const lastDay = lastDate.getDay();
+      const lastWeekdayIndex = lastDay === 0 ? 0 : 7 - lastDay;
+      const endSunday = new Date(lastDate);
+      endSunday.setDate(lastDate.getDate() + lastWeekdayIndex);
+
+      const diffTime = Math.abs(endSunday.getTime() - startMonday.getTime());
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+      numWeeks = Math.max(1, Math.ceil(diffDays / 7));
+    } else {
+      // Fallback
+      // Find Monday of the current week
+      const currentDay = today.getDay(); // 0 = Sun, 1 = Mon, ...
+      const currentWeekdayIndex = currentDay === 0 ? 6 : currentDay - 1;
+      const currentMonday = new Date(today);
+      currentMonday.setDate(today.getDate() - currentWeekdayIndex);
+      
+      // Find Monday of Week 1 (3 weeks ago)
+      startMonday = new Date(currentMonday);
+      startMonday.setDate(currentMonday.getDate() - 21);
+      numWeeks = 4;
+    }
 
     const weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -743,14 +774,14 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
 
       for (let r = 0; r < 7; r++) {
         const rowCells = [];
-        for (let c = 0; c < 4; c++) {
+        for (let c = 0; c < numWeeks; c++) {
           // Calculate the specific date for this cell
           const cellDate = new Date(startMonday);
           cellDate.setDate(startMonday.getDate() + c * 7 + r);
           
           const dateStr = cellDate.toISOString().split('T')[0];
           const isFuture = cellDate.getTime() > today.getTime();
-          const isToday = dateStr === today.toISOString().split('T')[0];
+          const isToday = dateStr === todayStr;
 
           const dayLogs = trackerLogs.filter(l => l.date === dateStr);
           const logsCount = dayLogs.length;
@@ -803,19 +834,24 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
         grid.push(rowCells);
       }
 
-      // Filter month logs
-      const monthLogs = trackerLogs.filter(l => {
-        const d = new Date(l.date);
-        return d >= startMonday && d <= today;
+      // Filter logs within the computed range for accuracy metrics
+      const rangeLogs = trackerLogs.filter(l => {
+        const d = new Date(l.date + 'T12:00:00');
+        // Find Sunday of last week or maximum day of range
+        const maxLimitDate = dateRangeList && dateRangeList.length > 0
+          ? new Date(dateRangeList[dateRangeList.length - 1] + 'T12:00:00')
+          : today;
+        return d >= startMonday && d <= maxLimitDate;
       });
 
-      const uniqueLoggedDates = new Set(monthLogs.map(l => l.date));
+      const uniqueLoggedDates = new Set(rangeLogs.map(l => l.date));
 
       acc[tracker.id] = {
         grid,
         maxDayValue,
-        totalLogsInMonth: monthLogs.length,
-        activeDaysCount: uniqueLoggedDates.size
+        totalLogsInMonth: rangeLogs.length,
+        activeDaysCount: uniqueLoggedDates.size,
+        totalDaysInRange: numWeeks * 7
       };
 
       return acc;
@@ -834,8 +870,9 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
       maxDayValue: number;
       totalLogsInMonth: number;
       activeDaysCount: number;
+      totalDaysInRange: number;
     }>);
-  }, [trackers, logs]);
+  }, [trackers, logs, dateRangeList]);
 
   // Category Trend Analysis calculations based on selected timeframe
   const categoryTrends = useMemo(() => {
@@ -1724,11 +1761,11 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
         </div>
       ) : (
         <>
-          {/* 7-Day Activity Consistency Snapshot (Weekly Bar Chart) */}
-          <ActivityConsistencySnapshot logs={logs} />
+          {/* Activity Consistency Snapshot (Dynamic Bar Chart) */}
+          <ActivityConsistencySnapshot logs={logs} dateRangeList={dateRangeList} timeMode={timeMode} />
 
-      {/* Weekly Text-Based Editorial Progress Summary */}
-      <WeeklyTextSummary trackers={trackers} logs={logs} />
+      {/* Dynamic Editorial Progress Summary */}
+      <WeeklyTextSummary trackers={trackers} logs={logs} dateRangeList={dateRangeList} timeMode={timeMode} />
 
       {analyticsView === 'individual' ? (
         <>
@@ -2149,10 +2186,10 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           </div>
           <div>
             <h3 className="font-serif font-medium text-lg text-editorial-dark">
-              Past Month Consistency (7x4 Habit Grid)
+              Habit Consistency Grid
             </h3>
             <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
-              Visualize completion frequency and intensity for <strong>{selectedTracker.name}</strong> over the past 28 days
+              Visualize completion frequency and intensity for <strong>{selectedTracker.name}</strong> over the selected {dateRangeList.length}-day range
             </p>
           </div>
         </div>
@@ -2161,12 +2198,12 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
         {(() => {
           const heatmap = trackerHeatmaps[selectedTracker.id];
           if (!heatmap) return null;
-          const { grid, totalLogsInMonth, activeDaysCount } = heatmap;
-          const consistencyRate = Math.round((activeDaysCount / 28) * 100);
+          const { grid, totalLogsInMonth, activeDaysCount, totalDaysInRange } = heatmap;
+          const consistencyRate = Math.round((activeDaysCount / (totalDaysInRange || 28)) * 100);
 
           return (
             <div className="flex flex-col md:flex-row items-center gap-8 justify-between p-4 bg-editorial-dark/[0.01]">
-              <div className="flex gap-4 items-center">
+              <div className="flex gap-4 items-center overflow-x-auto w-full md:w-auto">
                 {/* Weekday labels */}
                 <div className="flex flex-col justify-between text-[10px] font-mono text-editorial-dark/45 py-2 select-none h-44">
                   <span>M</span>
@@ -2178,13 +2215,22 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                   <span>S</span>
                 </div>
 
-                <div className="grid grid-cols-4 gap-2">
-                  {Array.from({ length: 4 }).map((_, colIdx) => {
-                    const weekLabels = ["3W Ago", "2W Ago", "Last Wk", "This Wk"];
+                <div 
+                  className="grid gap-2 min-w-max"
+                  style={{ gridTemplateColumns: `repeat(${grid[0]?.length || 4}, minmax(0, 1fr))` }}
+                >
+                  {Array.from({ length: grid[0]?.length || 4 }).map((_, colIdx) => {
+                    let label = `W${colIdx + 1}`;
+                    if (grid[0]?.length === 4) {
+                      const weekLabels = ["3W Ago", "2W Ago", "Last Wk", "This Wk"];
+                      label = weekLabels[colIdx] || label;
+                    } else if (colIdx === (grid[0]?.length || 4) - 1) {
+                      label = "Current";
+                    }
                     return (
                       <div key={colIdx} className="flex flex-col gap-2">
-                        <span className="text-[9px] font-mono text-editorial-dark/40 text-center uppercase tracking-wider mb-1">
-                          {weekLabels[colIdx]}
+                        <span className="text-[9px] font-mono text-editorial-dark/40 text-center uppercase tracking-wider mb-1 h-3 block">
+                          {label}
                         </span>
                         {Array.from({ length: 7 }).map((_, rowIdx) => {
                           const cell = grid[rowIdx][colIdx];
@@ -2251,13 +2297,13 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
               <div className="flex-1 max-w-sm w-full border border-editorial-dark/10 bg-editorial-bg p-5 flex flex-col justify-between space-y-4">
                 <div>
                   <h4 className="font-serif font-medium text-base text-editorial-dark mb-1">Consistency Statistics</h4>
-                  <p className="text-xs font-sans italic text-editorial-dark/60">Aggregated logs from the past 28 days</p>
+                  <p className="text-xs font-sans italic text-editorial-dark/60">Aggregated logs from the selected range</p>
                 </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-editorial-dark/60 font-sans">Active Days</span>
-                    <span className="font-mono font-bold text-editorial-dark">{activeDaysCount} / 28 days</span>
+                    <span className="font-mono font-bold text-editorial-dark">{activeDaysCount} / {totalDaysInRange || 28} days</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-editorial-dark/60 font-sans">Consistency Rate</span>
@@ -3326,7 +3372,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
           </div>
         </div>
       ) : (
-        /* Weekly Habit Heatmap Grid View */
+        /* Dynamic Habit Heatmap Grid View */
         <div className="space-y-6">
           <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-2.5">
@@ -3335,10 +3381,10 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
               </div>
               <div>
                 <h3 className="font-serif font-medium text-lg text-editorial-dark">
-                  Weekly Habit Heatmap
+                  Habit Heatmap
                 </h3>
                 <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
-                  Visualize log frequency and intensity over the past 4 weeks (28 days) for each tracker
+                  Visualize log frequency and intensity over the selected date range ({dateRangeList.length} days) for each tracker
                 </p>
               </div>
             </div>
@@ -3348,9 +3394,9 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
             {trackers.map((tracker) => {
               const heatmap = trackerHeatmaps[tracker.id];
               if (!heatmap) return null;
-              const { grid, totalLogsInMonth, activeDaysCount } = heatmap;
+              const { grid, totalLogsInMonth, activeDaysCount, totalDaysInRange } = heatmap;
               const colorStyles = COLOR_MAP[tracker.color] || COLOR_MAP.emerald;
-              const consistencyRate = Math.round((activeDaysCount / 28) * 100);
+              const consistencyRate = Math.round((activeDaysCount / (totalDaysInRange || 28)) * 100);
 
               return (
                 <div key={tracker.id} className="bg-editorial-bg p-5 rounded-none border border-editorial-dark/15 flex flex-col justify-between hover:border-editorial-dark/30 transition-all space-y-4">
@@ -3372,8 +3418,8 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                   </div>
 
                   {/* Heatmap Grid Component */}
-                  <div className="flex flex-col items-center justify-center py-2">
-                    <div className="flex gap-2">
+                  <div className="flex flex-col items-center justify-center py-2 overflow-x-auto">
+                    <div className="flex gap-2 min-w-max">
                       {/* Weekday Labels (Mon, Tue, Wed, Thu, Fri, Sat, Sun) */}
                       <div className="flex flex-col justify-between text-[9px] font-mono text-editorial-dark/45 py-1 select-none pr-1">
                         <span>M</span>
@@ -3385,15 +3431,24 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                         <span>S</span>
                       </div>
 
-                      {/* The Grid itself: 4 columns of 7 cells */}
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {Array.from({ length: 4 }).map((_, colIdx) => {
-                          const weekLabels = ["3W Ago", "2W Ago", "Last Wk", "This Wk"];
+                      {/* The Grid itself: dynamic columns of 7 cells */}
+                      <div 
+                        className="grid gap-1.5"
+                        style={{ gridTemplateColumns: `repeat(${grid[0]?.length || 4}, minmax(0, 1fr))` }}
+                      >
+                        {Array.from({ length: grid[0]?.length || 4 }).map((_, colIdx) => {
+                          let label = `W${colIdx + 1}`;
+                          if (grid[0]?.length === 4) {
+                            const weekLabels = ["3W Ago", "2W Ago", "Last Wk", "This Wk"];
+                            label = weekLabels[colIdx] || label;
+                          } else if (colIdx === (grid[0]?.length || 4) - 1) {
+                            label = "Current";
+                          }
                           return (
                             <div key={colIdx} className="flex flex-col gap-1.5">
                               {/* Week Header Label */}
                               <span className="text-[8px] font-mono text-editorial-dark/40 text-center uppercase tracking-tighter mb-1 h-3 block">
-                                {weekLabels[colIdx]}
+                                {label}
                               </span>
                               
                               {Array.from({ length: 7 }).map((_, rowIdx) => {
@@ -3461,7 +3516,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                   {/* Bottom Stats for Tracker Heatmap */}
                   <div className="pt-3.5 border-t border-editorial-dark/5 bg-editorial-dark/[0.01] -mx-5 -mb-5 p-4 space-y-2 mt-auto">
                     <div className="flex items-center justify-between text-xs font-sans">
-                      <span className="text-editorial-dark/60 italic">Consistency (28D)</span>
+                      <span className="text-editorial-dark/60 italic">Consistency ({totalDaysInRange}D)</span>
                       <span className="font-mono font-bold text-editorial-dark">{consistencyRate}%</span>
                     </div>
                     <div className="w-full bg-editorial-dark/10 h-1 rounded-none overflow-hidden">
@@ -3471,7 +3526,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
                       />
                     </div>
                     <div className="flex justify-between items-baseline text-[9px] font-mono text-editorial-dark/45">
-                      <span>{totalLogsInMonth} logs in month</span>
+                      <span>{totalLogsInMonth} logs in range</span>
                       <div className="flex items-center gap-1 select-none">
                         <span>Less</span>
                         <span className="w-1.5 h-1.5 bg-editorial-dark/[0.04] border border-editorial-dark/10" />

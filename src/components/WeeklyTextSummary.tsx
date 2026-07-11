@@ -13,9 +13,11 @@ interface WeeklyTextSummaryProps {
   trackers: Tracker[];
   logs: LogEntry[];
   selectedDate?: string;
+  dateRangeList?: string[];
+  timeMode?: string;
 }
 
-export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSummaryProps) {
+export function WeeklyTextSummary({ trackers, logs, selectedDate, dateRangeList, timeMode }: WeeklyTextSummaryProps) {
   // Use selectedDate or fall back to today's date
   const referenceDateStr = useMemo(() => {
     if (selectedDate) return selectedDate;
@@ -81,43 +83,53 @@ export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSu
   };
 
   const analysis = useMemo(() => {
-    const refDateObj = new Date(referenceDateStr + 'T12:00:00');
-    
-    // Get past 7 days (including refDate)
-    const last7Days: string[] = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(refDateObj.getTime() - i * 24 * 60 * 60 * 1000);
-      last7Days.push(d.toISOString().split('T')[0]);
+    let currentPeriod: string[] = [];
+    let previousPeriod: string[] = [];
+
+    if (dateRangeList && dateRangeList.length > 0) {
+      currentPeriod = dateRangeList;
+      const length = dateRangeList.length;
+      const firstDateStr = dateRangeList[0];
+      const startDate = new Date(firstDateStr + 'T12:00:00');
+      for (let i = 1; i <= length; i++) {
+        const d = new Date(startDate.getTime() - i * 24 * 60 * 60 * 1000);
+        previousPeriod.push(d.toISOString().split('T')[0]);
+      }
+      previousPeriod.reverse();
+    } else {
+      const refDateObj = new Date(referenceDateStr + 'T12:00:00');
+      // Fallback 7 days
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(refDateObj.getTime() - i * 24 * 60 * 60 * 1000);
+        currentPeriod.push(d.toISOString().split('T')[0]);
+      }
+      for (let i = 7; i < 14; i++) {
+        const d = new Date(refDateObj.getTime() - i * 24 * 60 * 60 * 1000);
+        previousPeriod.push(d.toISOString().split('T')[0]);
+      }
     }
 
-    // Get previous 7 days
-    const prev7Days: string[] = [];
-    for (let i = 7; i < 14; i++) {
-      const d = new Date(refDateObj.getTime() - i * 24 * 60 * 60 * 1000);
-      prev7Days.push(d.toISOString().split('T')[0]);
-    }
-
-    const currentWeekLogs = logs.filter(l => last7Days.includes(l.date));
-    const prevWeekLogs = logs.filter(l => prev7Days.includes(l.date));
+    const currentPeriodLogs = logs.filter(l => currentPeriod.includes(l.date));
+    const previousPeriodLogs = logs.filter(l => previousPeriod.includes(l.date));
 
     // Calculate details for each tracker
     const trackerStats = trackers.map(tracker => {
-      const thisWeekLogs = currentWeekLogs.filter(l => l.trackerId === tracker.id);
-      const lastWeekLogs = prevWeekLogs.filter(l => l.trackerId === tracker.id);
+      const thisPeriodLogs = currentPeriodLogs.filter(l => l.trackerId === tracker.id);
+      const lastPeriodLogs = previousPeriodLogs.filter(l => l.trackerId === tracker.id);
       const streak = calculateStreakForTracker(tracker, logs, referenceDateStr);
 
-      const countDiff = thisWeekLogs.length - lastWeekLogs.length;
+      const countDiff = thisPeriodLogs.length - lastPeriodLogs.length;
       let pctChange = 0;
-      if (lastWeekLogs.length > 0) {
-        pctChange = Math.round((countDiff / lastWeekLogs.length) * 100);
-      } else if (thisWeekLogs.length > 0) {
+      if (lastPeriodLogs.length > 0) {
+        pctChange = Math.round((countDiff / lastPeriodLogs.length) * 100);
+      } else if (thisPeriodLogs.length > 0) {
         pctChange = 100;
       }
 
       return {
         tracker,
-        thisWeekCount: thisWeekLogs.length,
-        lastWeekCount: lastWeekLogs.length,
+        thisPeriodCount: thisPeriodLogs.length,
+        lastPeriodCount: lastPeriodLogs.length,
         countDiff,
         pctChange,
         streak
@@ -139,8 +151,8 @@ export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSu
     const mostImproved = sortedByImprovement[0] || null;
 
     // 3. Overall Activity Summary & Insights
-    const totalCurrentLogs = currentWeekLogs.length;
-    const totalPrevLogs = prevWeekLogs.length;
+    const totalCurrentLogs = currentPeriodLogs.length;
+    const totalPrevLogs = previousPeriodLogs.length;
     const overallDiff = totalCurrentLogs - totalPrevLogs;
     let overallPct = 0;
     if (totalPrevLogs > 0) {
@@ -149,9 +161,9 @@ export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSu
       overallPct = 100;
     }
 
-    // Active trackers this week vs total
-    const activeTrackerIdsThisWeek = new Set(currentWeekLogs.map(l => l.trackerId));
-    const activeTrackersCount = activeTrackerIdsThisWeek.size;
+    // Active trackers in this period vs total
+    const activeTrackerIdsThisPeriod = new Set(currentPeriodLogs.map(l => l.trackerId));
+    const activeTrackersCount = activeTrackerIdsThisPeriod.size;
 
     return {
       trackerStats,
@@ -162,36 +174,40 @@ export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSu
       overallDiff,
       overallPct,
       activeTrackersCount,
-      referenceDate: refDateObj
+      referenceDate: dateRangeList && dateRangeList.length > 0 
+        ? new Date(dateRangeList[dateRangeList.length - 1] + 'T12:00:00')
+        : new Date(referenceDateStr + 'T12:00:00'),
+      periodLength: currentPeriod.length
     };
-  }, [trackers, logs, referenceDateStr]);
+  }, [trackers, logs, referenceDateStr, dateRangeList]);
 
   // Generate dynamic prose/summary text based on the calculations
   const summaryProse = useMemo(() => {
-    const { totalCurrentLogs, totalPrevLogs, overallDiff, activeTrackersCount, mostImproved, highestStreak } = analysis;
+    const { totalCurrentLogs, totalPrevLogs, overallDiff, activeTrackersCount, mostImproved, highestStreak, periodLength } = analysis;
     
     if (trackers.length === 0) {
-      return "Start by creating your first metric tracker to begin gathering weekly progress insights.";
+      return "Start by creating your first metric tracker to begin gathering progress insights.";
     }
 
     if (totalCurrentLogs === 0) {
-      return "No entries have been recorded yet for the current week. Try logging your first activity today to jumpstart your streak and generate personalized progress analytics.";
+      return `No entries have been recorded yet for the current ${periodLength}-day period. Try logging your first activity today to jumpstart your streak and generate personalized progress analytics.`;
     }
 
     const trackerWord = activeTrackersCount === 1 ? 'tracker' : 'trackers';
+    const periodWord = timeMode === '7' ? 'week' : timeMode === '30' ? 'month' : timeMode === '90' ? 'quarter' : `${periodLength}-day period`;
     
-    let text = `Throughout this week, you maintained active engagement across **${activeTrackersCount} different ${trackerWord}**, registering a total of **${totalCurrentLogs} logs**. `;
+    let text = `Throughout this ${periodWord}, you maintained active engagement across **${activeTrackersCount} different ${trackerWord}**, registering a total of **${totalCurrentLogs} logs**. `;
 
     if (overallDiff > 0) {
-      text += `This marks an impressive **increase of ${overallDiff} entries** compared to the prior week, indicating substantial growth in your routine and tracking momentum. `;
+      text += `This marks an impressive **increase of ${overallDiff} entries** compared to the prior ${periodWord}, indicating substantial growth in your routine and tracking momentum. `;
     } else if (overallDiff < 0) {
-      text += `While your overall log volume saw a slight decrease of ${Math.abs(overallDiff)} entries compared to last week, you successfully sustained consistency across several core habits. `;
+      text += `While your overall log volume saw a slight decrease of ${Math.abs(overallDiff)} entries compared to the previous ${periodWord}, you successfully sustained consistency across several core habits. `;
     } else {
-      text += `Your log frequency matched last week's volume perfectly with exactly ${totalCurrentLogs} entries, demonstrating a balanced and steady habit cadence. `;
+      text += `Your log frequency matched the prior ${periodWord}'s volume perfectly with exactly ${totalCurrentLogs} entries, demonstrating a balanced and steady habit cadence. `;
     }
 
     if (mostImproved) {
-      text += `Your most notable progress occurred with your **${mostImproved.tracker.name}** tracker, which saw the largest upswing in logging frequency (${mostImproved.thisWeekCount} logs this week, up from ${mostImproved.lastWeekCount} last week). `;
+      text += `Your most notable progress occurred with your **${mostImproved.tracker.name}** tracker, which saw the largest upswing in logging frequency (${mostImproved.thisPeriodCount} logs in this period, up from ${mostImproved.lastPeriodCount} in the previous period). `;
     }
 
     if (highestStreak && highestStreak.streak >= 3) {
@@ -201,7 +217,7 @@ export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSu
     }
 
     return text;
-  }, [analysis, trackers]);
+  }, [analysis, trackers, timeMode]);
 
   const { mostImproved, highestStreak, totalCurrentLogs, overallDiff, activeTrackersCount } = analysis;
 
@@ -211,6 +227,22 @@ export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSu
     if (totalCurrentLogs > 0) return "Establishing Habits";
     return "Quiescent Period";
   };
+
+  // Label for summary header
+  const headerTitle = useMemo(() => {
+    if (timeMode === '7') return 'Weekly Editorial Summary';
+    if (timeMode === '30') return 'Monthly Editorial Summary';
+    if (timeMode === '90') return 'Quarterly Editorial Summary';
+    return `${analysis.periodLength}-Day Editorial Summary`;
+  }, [timeMode, analysis.periodLength]);
+
+  // Period label
+  const periodLabelText = useMemo(() => {
+    if (timeMode === '7') return 'Week Ending';
+    if (timeMode === '30') return 'Month Ending';
+    if (timeMode === '90') return 'Quarter Ending';
+    return 'Period Ending';
+  }, [timeMode]);
 
   return (
     <motion.div
@@ -225,12 +257,12 @@ export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSu
             <BookOpen size={14} className="stroke-[1.5px]" />
           </div>
           <h3 className="font-serif font-medium text-base text-editorial-dark">
-            Weekly Editorial Summary
+            {headerTitle}
           </h3>
         </div>
         <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-editorial-dark/50">
           <Calendar size={11} />
-          <span>Week Ending {analysis.referenceDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          <span>{periodLabelText} {analysis.referenceDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
         </div>
       </div>
 
@@ -276,12 +308,12 @@ export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSu
 
                   <div className="grid grid-cols-3 gap-2 pt-2 border-t border-editorial-dark/5">
                     <div>
-                      <span className="block text-[8px] font-mono text-editorial-dark/40 uppercase">This Week</span>
-                      <span className="font-mono text-sm font-semibold text-editorial-dark">{mostImproved.thisWeekCount} logs</span>
+                      <span className="block text-[8px] font-mono text-editorial-dark/40 uppercase">This Period</span>
+                      <span className="font-mono text-sm font-semibold text-editorial-dark">{mostImproved.thisPeriodCount} logs</span>
                     </div>
                     <div>
-                      <span className="block text-[8px] font-mono text-editorial-dark/40 uppercase">Last Week</span>
-                      <span className="font-mono text-sm text-editorial-dark/60">{mostImproved.lastWeekCount} logs</span>
+                      <span className="block text-[8px] font-mono text-editorial-dark/40 uppercase">Last Period</span>
+                      <span className="font-mono text-sm text-editorial-dark/60">{mostImproved.lastPeriodCount} logs</span>
                     </div>
                     <div>
                       <span className="block text-[8px] font-mono text-editorial-dark/40 uppercase font-medium text-emerald-600">Growth</span>
@@ -294,7 +326,7 @@ export function WeeklyTextSummary({ trackers, logs, selectedDate }: WeeklyTextSu
               ) : (
                 <div className="h-20 flex items-center justify-center text-center">
                   <p className="text-[11px] font-sans italic text-editorial-dark/50">
-                    No upward trends compared to last week yet. Keep recording log entries daily to reveal improvements!
+                    No upward trends compared to the previous period yet. Keep recording log entries daily to reveal improvements!
                   </p>
                 </div>
               )}

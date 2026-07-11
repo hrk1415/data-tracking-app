@@ -21,17 +21,39 @@ import { motion } from 'motion/react';
 interface ActivityConsistencySnapshotProps {
   logs: LogEntry[];
   selectedDate?: string;
+  dateRangeList?: string[];
+  timeMode?: string;
 }
 
-export function ActivityConsistencySnapshot({ logs, selectedDate }: ActivityConsistencySnapshotProps) {
+export function ActivityConsistencySnapshot({ logs, selectedDate, dateRangeList, timeMode }: ActivityConsistencySnapshotProps) {
   // Use today's date based on current client time or selectedDate
   const referenceDateStr = useMemo(() => {
     if (selectedDate) return selectedDate;
     return new Date().toISOString().split('T')[0];
   }, [selectedDate]);
 
-  // Calculate the last 7 days data
-  const last7DaysData = useMemo(() => {
+  // Calculate the range data based on the dynamic dateRangeList or fall back to last 7 days
+  const rangeData = useMemo(() => {
+    if (dateRangeList && dateRangeList.length > 0) {
+      return dateRangeList.map(dateStr => {
+        const d = new Date(dateStr + 'T12:00:00');
+        const dayLogs = logs.filter(l => l.date === dateStr);
+        const displayDate = d.toLocaleDateString(undefined, { 
+          weekday: 'short', 
+          month: 'short', 
+          day: 'numeric' 
+        });
+        const dayOfWeek = d.toLocaleDateString(undefined, { weekday: 'short' });
+        return {
+          date: dateStr,
+          dayOfWeek,
+          displayDate,
+          logsCount: dayLogs.length,
+        };
+      });
+    }
+
+    // Fallback to last 7 days
     const refDate = new Date(referenceDateStr + 'T12:00:00');
     const data = [];
 
@@ -56,7 +78,7 @@ export function ActivityConsistencySnapshot({ logs, selectedDate }: ActivityCons
     }
 
     return data;
-  }, [logs, referenceDateStr]);
+  }, [logs, referenceDateStr, dateRangeList]);
 
   // Summarized metrics
   const summary = useMemo(() => {
@@ -65,7 +87,7 @@ export function ActivityConsistencySnapshot({ logs, selectedDate }: ActivityCons
     let peakDayName = 'N/A';
     let peakLogsCount = 0;
 
-    last7DaysData.forEach(day => {
+    rangeData.forEach(day => {
       totalLogs += day.logsCount;
       if (day.logsCount > 0) {
         activeDaysCount++;
@@ -76,8 +98,9 @@ export function ActivityConsistencySnapshot({ logs, selectedDate }: ActivityCons
       }
     });
 
-    const averageLogsPerDay = Math.round((totalLogs / 7) * 10) / 10;
-    const consistencyRate = Math.round((activeDaysCount / 7) * 100);
+    const totalDays = rangeData.length || 7;
+    const averageLogsPerDay = Math.round((totalLogs / totalDays) * 10) / 10;
+    const consistencyRate = Math.round((activeDaysCount / totalDays) * 100);
 
     return {
       totalLogs,
@@ -87,7 +110,16 @@ export function ActivityConsistencySnapshot({ logs, selectedDate }: ActivityCons
       peakDayName,
       peakLogsCount
     };
-  }, [last7DaysData]);
+  }, [rangeData]);
+
+  // Title formatting based on selected range
+  const titleText = useMemo(() => {
+    if (timeMode === '7') return '7-Day Activity Consistency Snapshot';
+    if (timeMode === '30') return '30-Day Activity Consistency Snapshot';
+    if (timeMode === '90') return '90-Day Activity Consistency Snapshot';
+    if (timeMode === 'custom') return `${rangeData.length}-Day Custom Activity Consistency Snapshot`;
+    return 'Activity Consistency Snapshot';
+  }, [timeMode, rangeData]);
 
   return (
     <motion.div
@@ -101,10 +133,10 @@ export function ActivityConsistencySnapshot({ logs, selectedDate }: ActivityCons
         <div>
           <h3 className="font-serif font-medium text-lg text-editorial-dark flex items-center gap-2">
             <BarChart3 className="text-editorial-accent shrink-0 animate-pulse" size={18} />
-            7-Day Activity Consistency Snapshot
+            {titleText}
           </h3>
           <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">
-            Total log entry counts per day over the last 7 days to evaluate habit routine consistency.
+            Total log entry counts per day over the selected timeframe to evaluate habit routine consistency.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -133,7 +165,7 @@ export function ActivityConsistencySnapshot({ logs, selectedDate }: ActivityCons
               <div className="space-y-1">
                 <span className="text-[10px] font-mono text-editorial-dark/45 uppercase">Active Days</span>
                 <p className="text-2xl font-mono font-light text-editorial-dark">
-                  {summary.activeDaysCount} <span className="text-xs font-serif text-editorial-dark/50">/ 7</span>
+                  {summary.activeDaysCount} <span className="text-xs font-serif text-editorial-dark/50">/ {rangeData.length}</span>
                 </p>
               </div>
 
@@ -168,10 +200,10 @@ export function ActivityConsistencySnapshot({ logs, selectedDate }: ActivityCons
         {/* Right Side: Recharts Bar Chart */}
         <div className="lg:col-span-8 flex flex-col justify-between h-[200px] w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={last7DaysData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+            <BarChart data={rangeData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
               <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="var(--color-editorial-dark)" strokeOpacity={0.08} />
               <XAxis
-                dataKey="dayOfWeek"
+                dataKey={rangeData.length > 20 ? 'date' : 'dayOfWeek'}
                 tick={{ fontSize: 9, fill: 'var(--color-editorial-dark)', opacity: 0.6, fontFamily: 'monospace' }}
                 axisLine={false}
                 tickLine={false}
@@ -205,7 +237,7 @@ export function ActivityConsistencySnapshot({ logs, selectedDate }: ActivityCons
                 dataKey="logsCount" 
                 radius={[2, 2, 0, 0]}
               >
-                {last7DaysData.map((entry, index) => {
+                {rangeData.map((entry, index) => {
                   // Highlight peak logging days with full accent, others with softer desaturated color
                   const isPeak = entry.logsCount > 0 && entry.logsCount === summary.peakLogsCount;
                   return (
