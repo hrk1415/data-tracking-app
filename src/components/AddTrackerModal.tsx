@@ -33,7 +33,8 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
   const [targetValue, setTargetValue] = useState<number | ''>('');
   const [selectedColor, setSelectedColor] = useState('emerald');
   const [selectedIcon, setSelectedIcon] = useState('Heart');
-  const [tagsInput, setTagsInput] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [customTagInput, setCustomTagInput] = useState('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -70,12 +71,6 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
       return;
     }
 
-    const parsedTags = tagsInput
-      .split(/[,\s]+/)
-      .map(t => t.trim())
-      .filter(Boolean)
-      .map(t => t.startsWith('#') ? t.toLowerCase() : `#${t.toLowerCase()}`);
-
     const newTracker: Tracker = {
       id: `tracker-${Date.now()}`,
       name: name.trim(),
@@ -87,7 +82,7 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
       icon: selectedIcon,
       targetValue: hasTarget && targetValue !== '' ? Number(targetValue) : undefined,
       createdAt: new Date().toISOString(),
-      tags: parsedTags.length > 0 ? parsedTags : undefined,
+      tags: selectedTags.length > 0 ? selectedTags : undefined,
     };
 
     onAdd(newTracker);
@@ -105,7 +100,8 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
     setTargetValue('');
     setSelectedColor('emerald');
     setSelectedIcon('Heart');
-    setTagsInput('');
+    setSelectedTags([]);
+    setCustomTagInput('');
     setErrors({});
   };
 
@@ -195,19 +191,100 @@ export function AddTrackerModal({ isOpen, onClose, onAdd }: AddTrackerModalProps
                 />
               </div>
 
-              {/* Tags */}
+              {/* Tags Selector */}
               <div>
-                <label htmlFor="tracker-tags" className="block text-[10px] font-mono font-medium text-editorial-dark/60 uppercase tracking-widest mb-1.5">
-                  Tags <span className="text-editorial-dark/40 font-normal italic lowercase">(optional, separated by commas or spaces, e.g. #productivity, #health)</span>
+                <label className="block text-[10px] font-mono font-medium text-editorial-dark/60 uppercase tracking-widest mb-1.5">
+                  Predefined Tags <span className="text-editorial-dark/40 font-normal italic lowercase">(click to toggle)</span>
                 </label>
-                <input
-                  id="tracker-tags"
-                  type="text"
-                  placeholder="e.g. productivity, health, morning"
-                  value={tagsInput}
-                  onChange={(e) => setTagsInput(e.target.value)}
-                  className="w-full rounded-none border border-editorial-dark/20 bg-editorial-bg px-4 py-2.5 text-sm font-sans outline-hidden focus:border-editorial-accent transition-all"
-                />
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {['#productivity', '#health', '#finance', '#wellness', '#mindset', '#fitness', '#learning', '#routine', '#creativity', '#social'].map((tag) => {
+                    const isSelected = selectedTags.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTags(prev =>
+                            prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+                          );
+                        }}
+                        className={`text-[10px] font-mono font-bold px-2.5 py-1.5 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-editorial-accent text-editorial-bg border border-editorial-accent'
+                            : 'bg-editorial-dark/5 text-editorial-dark/60 border border-editorial-dark/10 hover:bg-editorial-accent-light/50 hover:text-editorial-accent'
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <label htmlFor="tracker-custom-tag" className="block text-[10px] font-mono font-medium text-editorial-dark/60 uppercase tracking-widest mb-1.5">
+                  Add Custom Tags <span className="text-editorial-dark/40 font-normal italic lowercase">(press Enter, comma, or space to add)</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="tracker-custom-tag"
+                    type="text"
+                    placeholder="e.g. morning, diet, work"
+                    value={customTagInput}
+                    onChange={(e) => setCustomTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+                        e.preventDefault();
+                        if (customTagInput.trim()) {
+                          const clean = customTagInput.trim().toLowerCase();
+                          const formatted = clean.startsWith('#') ? clean : `#${clean}`;
+                          if (!selectedTags.includes(formatted)) {
+                            setSelectedTags(prev => [...prev, formatted]);
+                          }
+                          setCustomTagInput('');
+                        }
+                      }
+                    }}
+                    className="flex-1 rounded-none border border-editorial-dark/20 bg-editorial-bg px-4 py-2.5 text-sm font-sans outline-hidden focus:border-editorial-accent transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (customTagInput.trim()) {
+                        const clean = customTagInput.trim().toLowerCase();
+                        const formatted = clean.startsWith('#') ? clean : `#${clean}`;
+                        if (!selectedTags.includes(formatted)) {
+                          setSelectedTags(prev => [...prev, formatted]);
+                        }
+                        setCustomTagInput('');
+                      }
+                    }}
+                    className="px-4 bg-editorial-dark text-editorial-bg hover:bg-editorial-accent transition-colors text-xs font-mono uppercase tracking-wider cursor-pointer"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {selectedTags.length > 0 && (
+                  <div className="mt-3">
+                    <span className="block text-[9px] font-mono text-editorial-dark/45 uppercase tracking-wider mb-1.5">Selected Tags:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 text-[9px] font-mono font-bold text-editorial-accent bg-editorial-accent-light border border-editorial-accent/25 px-2 py-0.5"
+                        >
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTags(prev => prev.filter(t => t !== tag))}
+                            className="hover:text-rose-600 focus:outline-hidden cursor-pointer flex items-center justify-center"
+                          >
+                            <X size={10} className="stroke-[3px]" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Grid of Category and Type */}

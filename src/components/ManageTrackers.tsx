@@ -36,6 +36,23 @@ export function ManageTrackers({ trackers, onDeleteTracker, onUpdateTracker, log
   const [hasTarget, setHasTarget] = useState(false);
   const [editTags, setEditTags] = useState('');
 
+  const parsedEditTags = editTags
+    .split(/[,\s]+/)
+    .map(t => t.trim())
+    .filter(Boolean)
+    .map(t => t.startsWith('#') ? t.toLowerCase() : `#${t.toLowerCase()}`);
+
+  const toggleEditTag = (tag: string) => {
+    const isSelected = parsedEditTags.includes(tag);
+    let newTags: string[];
+    if (isSelected) {
+      newTags = parsedEditTags.filter(t => t !== tag);
+    } else {
+      newTags = [...parsedEditTags, tag];
+    }
+    setEditTags(newTags.join(', '));
+  };
+
   const startEdit = (tracker: Tracker) => {
     setEditingTrackerId(tracker.id);
     setEditName(tracker.name);
@@ -143,8 +160,27 @@ export function ManageTrackers({ trackers, onDeleteTracker, onUpdateTracker, log
                       value={editTags}
                       onChange={(e) => setEditTags(e.target.value)}
                       placeholder="e.g. productivity, health"
-                      className="w-full text-sm rounded-none border border-editorial-dark/20 bg-editorial-bg px-3 py-1.5 focus:border-editorial-accent font-sans outline-hidden"
+                      className="w-full text-sm rounded-none border border-editorial-dark/20 bg-editorial-bg px-3 py-1.5 focus:border-editorial-accent font-sans outline-hidden mb-1.5"
                     />
+                    <div className="flex flex-wrap gap-1">
+                      {['#productivity', '#health', '#finance', '#wellness', '#mindset', '#fitness', '#learning', '#routine', '#creativity', '#social'].map((tag) => {
+                        const isSelected = parsedEditTags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => toggleEditTag(tag)}
+                            className={`text-[9px] font-mono font-bold px-2 py-0.5 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-editorial-accent text-editorial-bg border border-editorial-accent'
+                                : 'bg-editorial-dark/5 text-editorial-dark/60 border border-editorial-dark/10 hover:bg-editorial-accent-light/50 hover:text-editorial-accent'
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
