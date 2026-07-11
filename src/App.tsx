@@ -117,6 +117,10 @@ export default function App() {
   const [historyFilterTrackerId, setHistoryFilterTrackerId] = useState('all');
   const [historyFilterCategory, setHistoryFilterCategory] = useState('all');
 
+  // Dashboard filtering state
+  const [dashboardSearchQuery, setDashboardSearchQuery] = useState('');
+  const [dashboardSelectedTag, setDashboardSelectedTag] = useState<string>('all');
+
   // Reflection editor state
   const [reflectionInput, setReflectionInput] = useState<string>('');
   const [isEditingReflection, setIsEditingReflection] = useState<boolean>(false);
@@ -493,6 +497,32 @@ export default function App() {
     });
     return map;
   }, [logs]);
+
+  // Extract all unique tags across configured trackers
+  const allUniqueTags = useMemo(() => {
+    const tagsSet = new Set<string>();
+    trackers.forEach(t => {
+      if (t.tags) {
+        t.tags.forEach(tag => tagsSet.add(tag));
+      }
+    });
+    return Array.from(tagsSet).sort();
+  }, [trackers]);
+
+  // Filter trackers by dashboard search query and selected tag
+  const filteredTrackers = useMemo(() => {
+    return trackers.filter(t => {
+      const matchesSearch = dashboardSearchQuery.trim() === '' || 
+        t.name.toLowerCase().includes(dashboardSearchQuery.toLowerCase()) ||
+        t.category.toLowerCase().includes(dashboardSearchQuery.toLowerCase()) ||
+        (t.tags && t.tags.some(tag => tag.toLowerCase().includes(dashboardSearchQuery.toLowerCase())));
+
+      const matchesTag = dashboardSelectedTag === 'all' || 
+        (t.tags && t.tags.includes(dashboardSelectedTag));
+
+      return matchesSearch && matchesTag;
+    });
+  }, [trackers, dashboardSearchQuery, dashboardSelectedTag]);
 
   // Daily statistics for selected date
   const dailyStats = useMemo(() => {
@@ -2730,31 +2760,111 @@ export default function App() {
                     <h3 id="tracked-metrics-heading" className="text-xs font-mono text-editorial-accent tracking-widest uppercase">Tracked Metrics</h3>
                     {trackers.length > 0 && (
                       <span className="text-xs font-serif italic text-editorial-dark/65">
-                        {trackers.length} active monitors
+                        {filteredTrackers.length === trackers.length
+                          ? `${trackers.length} active monitors`
+                          : `Showing ${filteredTrackers.length} of ${trackers.length} monitors`}
                       </span>
                     )}
                   </div>
 
-                  {trackers.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {trackers.map((tracker) => {
-                        const dateReflection = reflections.find(r => r.date === selectedDate);
-                        const goalNote = dateReflection?.goalNotes?.[tracker.id] || '';
-                        return (
-                          <TrackerCard
-                            key={tracker.id}
-                            tracker={tracker}
-                            logs={logs}
-                            selectedDate={selectedDate}
-                            onLogValue={handleLogValue}
-                            onDeleteLog={handleDeleteLog}
-                            goalNote={goalNote}
-                            onSaveGoalNote={handleSaveGoalNote}
-                            onSaveMilestone={handleSaveMilestone}
-                          />
-                        );
-                      })}
+                  {/* Dashboard Tracker Filters */}
+                  {trackers.length > 0 && (
+                    <div className="mb-6 flex flex-col md:flex-row gap-4 bg-editorial-bg p-4 border border-editorial-dark/15">
+                      <div className="flex-1 relative">
+                        <span className="absolute left-3.5 top-3 text-editorial-dark/40">
+                          <Search size={13} />
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Search metrics by name, category, or #tag..."
+                          value={dashboardSearchQuery}
+                          onChange={(e) => setDashboardSearchQuery(e.target.value)}
+                          className="w-full pl-9 pr-14 py-2 text-xs font-sans rounded-none border border-editorial-dark/20 bg-editorial-bg outline-hidden focus:border-editorial-accent transition-all"
+                        />
+                        {dashboardSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setDashboardSearchQuery('')}
+                            className="absolute right-3.5 top-2.5 text-[10px] font-mono font-medium text-rose-600 hover:text-rose-800 uppercase tracking-wider cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+
+                      {allUniqueTags.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 max-w-full">
+                          <span className="text-[10px] font-mono text-editorial-dark/50 uppercase tracking-widest mr-1">Filter Tag:</span>
+                          <button
+                            type="button"
+                            onClick={() => setDashboardSelectedTag('all')}
+                            className={`text-[10px] font-mono font-bold px-2.5 py-1.5 border transition-all cursor-pointer ${
+                              dashboardSelectedTag === 'all'
+                                ? 'bg-editorial-accent text-editorial-bg border-editorial-accent'
+                                : 'bg-editorial-dark/5 text-editorial-dark/60 border-editorial-dark/10 hover:bg-editorial-accent-light/50 hover:text-editorial-accent'
+                            }`}
+                          >
+                            All
+                          </button>
+                          {allUniqueTags.map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => setDashboardSelectedTag(tag)}
+                              className={`text-[10px] font-mono font-bold px-2.5 py-1.5 border transition-all cursor-pointer ${
+                                dashboardSelectedTag === tag
+                                  ? 'bg-editorial-accent text-editorial-bg border-editorial-accent'
+                                  : 'bg-editorial-dark/5 text-editorial-dark/60 border-editorial-dark/10 hover:bg-editorial-accent-light/50 hover:text-editorial-accent'
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
+                  )}
+
+                  {trackers.length > 0 ? (
+                    filteredTrackers.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {filteredTrackers.map((tracker) => {
+                          const dateReflection = reflections.find(r => r.date === selectedDate);
+                          const goalNote = dateReflection?.goalNotes?.[tracker.id] || '';
+                          return (
+                            <TrackerCard
+                              key={tracker.id}
+                              tracker={tracker}
+                              logs={logs}
+                              selectedDate={selectedDate}
+                              onLogValue={handleLogValue}
+                              onDeleteLog={handleDeleteLog}
+                              goalNote={goalNote}
+                              onSaveGoalNote={handleSaveGoalNote}
+                              onSaveMilestone={handleSaveMilestone}
+                            />
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-editorial-dark/20 rounded-none bg-editorial-bg space-y-3">
+                        <span className="text-xl">🔍</span>
+                        <h4 className="font-serif text-sm font-semibold text-editorial-dark">No Matching Trackers</h4>
+                        <p className="text-xs text-editorial-dark/60 max-w-xs leading-relaxed">
+                          No trackers match your current search query "{dashboardSearchQuery}" or tag filter. Try resetting filters.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDashboardSearchQuery('');
+                            setDashboardSelectedTag('all');
+                          }}
+                          className="text-[10px] font-mono font-bold uppercase tracking-wider text-editorial-accent hover:text-editorial-dark transition-colors cursor-pointer"
+                        >
+                          Reset Active Filters
+                        </button>
+                      </div>
+                    )
                   ) : (
                     <div className="flex flex-col items-center justify-center p-16 text-center border border-dashed border-editorial-dark/25 rounded-none bg-editorial-bg space-y-5">
                       <div className="p-4 bg-editorial-accent-light text-editorial-accent border border-editorial-accent/30 rounded-none">
