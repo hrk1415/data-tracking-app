@@ -16,6 +16,7 @@ import { LogHistory } from './components/LogHistory';
 import { ManageTrackers } from './components/ManageTrackers';
 import { LucideIcon } from './components/LucideIcon';
 import { GoalNotesPanel } from './components/GoalNotesPanel';
+import { MotivationalQuote } from './components/MotivationalQuote';
 import {
   LayoutDashboard,
   BarChart2,
@@ -2019,6 +2020,9 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* Daily Motivational Quote Widget */}
+                <MotivationalQuote />
 
                 {/* Daily Reminder Push-Notification-Style Banner */}
                 <AnimatePresence>
