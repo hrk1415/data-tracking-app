@@ -26,6 +26,7 @@ export interface LogEntry {
   date: string; // YYYY-MM-DD
   note?: string;
   timestamp: string;
+  milestone?: string;
 }
 
 export interface TrackerCategory {

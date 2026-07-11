@@ -453,6 +453,30 @@ export default function App() {
     saveLogs(updated);
   };
 
+  const handleSaveMilestone = (trackerId: string, date: string, milestoneText: string | undefined) => {
+    const trackerLogs = logs.filter(l => l.trackerId === trackerId && l.date === date);
+    let updatedLogs = [...logs];
+    if (trackerLogs.length > 0) {
+      const latest = trackerLogs[trackerLogs.length - 1];
+      updatedLogs = logs.map(l => l.id === latest.id ? { ...l, milestone: milestoneText || undefined } : l);
+    } else {
+      const tracker = trackers.find(t => t.id === trackerId);
+      if (!tracker) return;
+      const baseValue = tracker.type === 'boolean' ? 1 : tracker.type === 'rating' ? 3 : 0;
+      const newLog: LogEntry = {
+        id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        trackerId,
+        value: baseValue,
+        date,
+        timestamp: new Date().toISOString(),
+        milestone: milestoneText || undefined,
+      };
+      updatedLogs.push(newLog);
+    }
+    setLogs(updatedLogs);
+    saveLogs(updatedLogs);
+  };
+
   // Quick Date navigation shifts days backward/forward
   const shiftDate = (days: number) => {
     if (!selectedDate) return;
@@ -2726,6 +2750,7 @@ export default function App() {
                             onDeleteLog={handleDeleteLog}
                             goalNote={goalNote}
                             onSaveGoalNote={handleSaveGoalNote}
+                            onSaveMilestone={handleSaveMilestone}
                           />
                         );
                       })}

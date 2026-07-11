@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Tracker, LogEntry, COLOR_MAP } from '../types';
 import { LucideIcon } from './LucideIcon';
-import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown, LineChart as LineChartIcon, X, Info, Download } from 'lucide-react';
+import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown, LineChart as LineChartIcon, X, Info, Download, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 
@@ -19,6 +19,7 @@ interface TrackerCardProps {
   onDeleteLog?: (logId: string) => void;
   goalNote?: string;
   onSaveGoalNote?: (date: string, trackerId: string, noteText: string) => void;
+  onSaveMilestone?: (trackerId: string, date: string, milestoneText: string | undefined) => void;
 }
 
 export function TrackerCard({ 
@@ -28,10 +29,13 @@ export function TrackerCard({
   onLogValue, 
   onDeleteLog,
   goalNote,
-  onSaveGoalNote
+  onSaveGoalNote,
+  onSaveMilestone
 }: TrackerCardProps) {
   // Filter logs for this tracker on the selected date
   const trackerLogs = logs.filter(l => l.trackerId === tracker.id && l.date === selectedDate);
+  const milestoneLog = trackerLogs.find(l => l.milestone);
+  const milestoneToday = milestoneLog ? milestoneLog.milestone : undefined;
 
   // Calculate current value based on tracker type
   // Counter: Sum of all logs on this date
@@ -146,6 +150,8 @@ export function TrackerCard({
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [showMilestoneForm, setShowMilestoneForm] = useState(false);
+  const [milestoneInput, setMilestoneInput] = useState('');
 
   // Calculate the last 30 days data
   const last30DaysData = React.useMemo(() => {
@@ -169,11 +175,15 @@ export function TrackerCard({
         day: 'numeric' 
       });
 
+      const milestoneLog = dayLogs.find(l => l.milestone);
+      const milestone = milestoneLog ? milestoneLog.milestone : undefined;
+
       data.push({
         date: dateStr,
         displayDate,
         value: val,
         hasLogs: dayLogs.length > 0,
+        milestone,
       });
     }
 
@@ -200,12 +210,16 @@ export function TrackerCard({
       const weekdayLabel = d.toLocaleDateString(undefined, { weekday: 'narrow' });
       const weekdayShort = d.toLocaleDateString(undefined, { weekday: 'short' });
 
+      const milestoneLog = dayLogs.find(l => l.milestone);
+      const milestone = milestoneLog ? milestoneLog.milestone : undefined;
+
       data.push({
         date: dateStr,
         weekdayLabel,
         weekdayShort,
         value: val,
         hasLogs: dayLogs.length > 0,
+        milestone,
       });
     }
 
@@ -452,6 +466,18 @@ export function TrackerCard({
               >
                 <Download size={13} />
               </button>
+              <button
+                type="button"
+                onClick={() => setShowMilestoneForm(!showMilestoneForm)}
+                className={`p-0.5 transition-colors shrink-0 cursor-pointer ${
+                  milestoneToday 
+                    ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-500/10' 
+                    : 'text-editorial-dark/35 hover:text-editorial-accent hover:bg-editorial-accent-light/40'
+                }`}
+                title="Mark Daily Milestone"
+              >
+                <Trophy size={13} className={milestoneToday ? 'fill-amber-500/25' : ''} />
+              </button>
             </div>
             <p className="text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest mt-0.5">{tracker.category} tracker</p>
             {tracker.tags && tracker.tags.length > 0 && (
@@ -468,6 +494,15 @@ export function TrackerCard({
 
         {/* Goal Badge or Completion */}
         <div className="flex flex-col items-end gap-1.5 shrink-0">
+          {milestoneToday && (
+            <span 
+              className="inline-flex items-center gap-1.5 text-[10px] font-mono font-bold text-amber-800 bg-amber-500/10 border border-amber-500/20 rounded-none px-2.5 py-1 select-none"
+              title={`Milestone Achieved Today: ${milestoneToday}`}
+            >
+              <Trophy size={11} className="fill-amber-500/20 text-amber-600 animate-bounce" />
+              <span>{milestoneToday}</span>
+            </span>
+          )}
           {target && (
             <span className="text-[10px] font-mono font-medium text-editorial-accent bg-editorial-accent-light/50 border border-editorial-accent/20 rounded-none px-2.5 py-1">
               Goal: {target} {tracker.unit}
@@ -640,6 +675,9 @@ export function TrackerCard({
                     return (
                       <div className="bg-editorial-dark text-editorial-bg text-[9px] font-mono px-2 py-1 border border-editorial-accent/20 rounded-none shadow-md z-50">
                         <p className="font-semibold">{data.weekdayShort}: {data.value}{tracker.unit ? ` ${tracker.unit}` : ''}</p>
+                        {data.milestone && (
+                          <p className="text-amber-400 font-bold mt-0.5">🏆 {data.milestone}</p>
+                        )}
                       </div>
                     );
                   }
@@ -653,6 +691,9 @@ export function TrackerCard({
                 strokeWidth={1.75}
                 dot={({ cx, cy, payload }) => {
                   if (!payload.hasLogs) return <circle cx={cx} cy={cy} r={0} key={payload.date} />;
+                  if (payload.milestone) {
+                    return <circle cx={cx} cy={cy} r={3} fill="#eab308" stroke="#ffffff" strokeWidth={0.5} key={payload.date} />;
+                  }
                   return <circle cx={cx} cy={cy} r={2} fill={`var(--editorial-${tracker.color})`} stroke="#ffffff" strokeWidth={0.5} key={payload.date} />;
                 }}
                 activeDot={{ r: 4, fill: `var(--editorial-${tracker.color})`, stroke: '#ffffff', strokeWidth: 1 }}
@@ -1140,6 +1181,107 @@ export function TrackerCard({
         </AnimatePresence>
       </div>
 
+      {/* Milestone & Achievement */}
+      <div className="mt-3 border-t border-editorial-dark/10 pt-3">
+        <AnimatePresence initial={false}>
+          {showMilestoneForm ? (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="space-y-2 overflow-hidden"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-mono uppercase tracking-wider text-amber-700 font-bold flex items-center gap-1">
+                  <Trophy size={11} className="text-amber-500 animate-pulse" />
+                  <span>Set Milestone</span>
+                </span>
+                {milestoneToday && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSaveMilestone?.(tracker.id, selectedDate, undefined);
+                      setShowMilestoneForm(false);
+                      setMilestoneInput('');
+                    }}
+                    className="text-[9px] font-mono text-rose-600 hover:text-rose-800 uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    Remove Milestone
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                placeholder="e.g., Personal Best, 100th Workout, New Milestone..."
+                value={milestoneInput}
+                onChange={(e) => setMilestoneInput(e.target.value)}
+                className="w-full text-xs rounded-none border border-editorial-dark/20 px-3 py-1.5 bg-editorial-bg/50 focus:bg-editorial-bg outline-hidden focus:border-amber-500 transition-colors font-sans"
+              />
+              {/* Quick suggestions */}
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {['Personal Best', '100th Workout', 'New Record', 'Completed Goal', 'Streak Target'].map(suggestion => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => setMilestoneInput(suggestion)}
+                    className="text-[9px] font-mono px-2 py-0.5 border border-editorial-dark/10 hover:border-amber-500/40 hover:bg-amber-500/5 text-editorial-dark/60 hover:text-amber-700 transition-all cursor-pointer"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-end gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMilestoneForm(false);
+                    setMilestoneInput('');
+                  }}
+                  className="text-[10px] font-mono font-medium text-editorial-dark/60 hover:text-editorial-dark px-2 py-1 rounded-none hover:bg-editorial-accent-light"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (milestoneInput.trim()) {
+                      onSaveMilestone?.(tracker.id, selectedDate, milestoneInput.trim());
+                      setShowMilestoneForm(false);
+                    }
+                  }}
+                  className="text-[10px] font-mono font-semibold bg-amber-500 hover:bg-amber-600 text-editorial-dark px-2.5 py-1 rounded-none transition-colors"
+                >
+                  Save Milestone
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            <div className="flex items-center justify-between text-[11px] text-editorial-dark/50">
+              <span className="italic truncate max-w-[80%] flex items-center gap-1 font-medium">
+                {milestoneToday ? (
+                  <>
+                    <Trophy size={12} className="text-amber-500 fill-amber-500/10 shrink-0" />
+                    <span className="text-amber-800 font-semibold truncate bg-amber-500/5 px-1.5 py-0.5 border border-amber-500/10">Milestone: {milestoneToday}</span>
+                  </>
+                ) : (
+                  <span className="text-editorial-dark/40 font-normal">No milestone marked today</span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMilestoneInput(milestoneToday || '');
+                  setShowMilestoneForm(true);
+                }}
+                className="text-editorial-dark/70 hover:text-amber-600 hover:font-semibold flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider transition-all cursor-pointer"
+              >
+                {milestoneToday ? 'Edit 🏆' : '+ Milestone 🏆'}
+              </button>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* Daily Intention / Goal Note */}
       <div className="mt-3 border-t border-editorial-dark/10 pt-3">
         <div className="flex items-center gap-1.5 mb-1">
@@ -1285,6 +1427,12 @@ export function TrackerCard({
                                 <p className="font-serif text-xs">
                                   Value: <span className="font-mono font-bold text-editorial-accent">{data.value} {tracker.unit || ''}</span>
                                 </p>
+                                {data.milestone && (
+                                  <p className="font-bold text-amber-400 mt-1 flex items-center gap-1">
+                                    <Trophy size={11} className="fill-amber-400/20 text-amber-400 shrink-0" />
+                                    <span>Milestone: {data.milestone}</span>
+                                  </p>
+                                )}
                                 {!data.hasLogs && (
                                   <p className="text-[9px] text-editorial-bg/40 italic">No direct logs entered</p>
                                 )}
@@ -1301,6 +1449,14 @@ export function TrackerCard({
                         strokeWidth={2}
                         dot={({ cx, cy, payload }) => {
                           if (!payload.hasLogs) return <circle cx={cx} cy={cy} r={0} key={payload.date} />;
+                          if (payload.milestone) {
+                            return (
+                              <g key={payload.date} className="cursor-pointer">
+                                <circle cx={cx} cy={cy} r={6.5} fill="#f59e0b" stroke="#ffffff" strokeWidth={1} />
+                                <circle cx={cx} cy={cy} r={2} fill="#ffffff" />
+                              </g>
+                            );
+                          }
                           return <circle cx={cx} cy={cy} r={3.5} fill="#cca08a" stroke="#ffffff" strokeWidth={1} key={payload.date} />;
                         }}
                         activeDot={{ r: 5, fill: '#8fa89b', strokeWidth: 0 }}
@@ -1340,9 +1496,16 @@ export function TrackerCard({
                         return (
                           <div key={log.id || index} className="p-2.5 flex items-start justify-between gap-3 text-xs">
                             <div className="space-y-0.5">
-                              <span className="font-mono text-[9px] text-editorial-dark/45">
-                                {logDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-mono text-[9px] text-editorial-dark/45">
+                                  {logDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                                {log.milestone && (
+                                  <span className="inline-flex items-center gap-1 text-[8px] font-mono font-bold text-amber-700 bg-amber-500/10 border border-amber-500/20 px-1 py-0.5 rounded-none uppercase">
+                                    🏆 {log.milestone}
+                                  </span>
+                                )}
+                              </div>
                               {log.note && (
                                 <p className="text-editorial-dark/80 italic font-sans">{log.note}</p>
                               )}
