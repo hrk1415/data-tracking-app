@@ -180,6 +180,56 @@ export function TrackerCard({
     return data;
   }, [logs, tracker, selectedDate]);
 
+  // Calculate the last 7 days data for the sparkline chart
+  const last7DaysSparklineData = React.useMemo(() => {
+    const refDate = new Date(selectedDate + 'T12:00:00');
+    const data = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(refDate.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayLogs = logs.filter(l => l.trackerId === tracker.id && l.date === dateStr);
+
+      let val = 0;
+      if (tracker.type === 'counter') {
+        val = dayLogs.reduce((sum, log) => sum + log.value, 0);
+      } else {
+        val = dayLogs.length > 0 ? dayLogs[dayLogs.length - 1].value : 0;
+      }
+
+      const weekdayLabel = d.toLocaleDateString(undefined, { weekday: 'narrow' });
+      const weekdayShort = d.toLocaleDateString(undefined, { weekday: 'short' });
+
+      data.push({
+        date: dateStr,
+        weekdayLabel,
+        weekdayShort,
+        value: val,
+        hasLogs: dayLogs.length > 0,
+      });
+    }
+
+    return data;
+  }, [logs, tracker, selectedDate]);
+
+  // Calculate the 7-day trend (net change from 6 days ago to today)
+  const last7DaysTrend = React.useMemo(() => {
+    if (last7DaysSparklineData.length < 2) return null;
+    const startVal = last7DaysSparklineData[0].value;
+    const endVal = last7DaysSparklineData[last7DaysSparklineData.length - 1].value;
+    const diff = endVal - startVal;
+    let trend: 'up' | 'down' | 'stable' = 'stable';
+    if (diff > 0.0001) trend = 'up';
+    else if (diff < -0.0001) trend = 'down';
+
+    return {
+      startVal,
+      endVal,
+      diff,
+      trend,
+    };
+  }, [last7DaysSparklineData]);
+
   const colorStyles = COLOR_MAP[tracker.color] || COLOR_MAP.emerald;
 
   // Percentage completion for progress bars
@@ -352,6 +402,70 @@ export function TrackerCard({
           {tracker.description}
         </p>
       )}
+
+      {/* 7-Day Sparkline & Trend */}
+      <div className="mb-4 py-2 border-y border-editorial-dark/10 flex items-center justify-between gap-4 h-[54px]">
+        <div className="flex flex-col">
+          <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-editorial-dark/45">
+            7-Day Trend
+          </span>
+          {last7DaysTrend ? (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {last7DaysTrend.trend === 'up' ? (
+                <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-500 font-sans text-xs font-semibold">
+                  <ArrowUp size={12} className="stroke-[2.5px]" />
+                  <span>+{tracker.type === 'boolean' ? 'Active' : `${Math.round(last7DaysTrend.diff * 100) / 100}${tracker.unit ? ` ${tracker.unit}` : ''}`}</span>
+                </div>
+              ) : last7DaysTrend.trend === 'down' ? (
+                <div className="flex items-center gap-1 text-rose-600 dark:text-rose-500 font-sans text-xs font-semibold">
+                  <ArrowDown size={12} className="stroke-[2.5px]" />
+                  <span>{tracker.type === 'boolean' ? 'Inactive' : `${Math.round(last7DaysTrend.diff * 100) / 100}${tracker.unit ? ` ${tracker.unit}` : ''}`}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-editorial-dark/50 font-sans text-xs font-medium">
+                  <Minus size={12} className="stroke-[2.5px]" />
+                  <span>Stable</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="text-[10px] font-sans italic text-editorial-dark/40 mt-0.5">No recent data</span>
+          )}
+        </div>
+
+        {/* Tiny Sparkline Chart */}
+        <div className="w-24 h-8 shrink-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={last7DaysSparklineData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+              <Tooltip
+                cursor={false}
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div className="bg-editorial-dark text-editorial-bg text-[9px] font-mono px-2 py-1 border border-editorial-accent/20 rounded-none shadow-md z-50">
+                        <p className="font-semibold">{data.weekdayShort}: {data.value}{tracker.unit ? ` ${tracker.unit}` : ''}</p>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke={`var(--editorial-${tracker.color})`}
+                strokeWidth={1.75}
+                dot={({ cx, cy, payload }) => {
+                  if (!payload.hasLogs) return <circle cx={cx} cy={cy} r={0} key={payload.date} />;
+                  return <circle cx={cx} cy={cy} r={2} fill={`var(--editorial-${tracker.color})`} stroke="#ffffff" strokeWidth={0.5} key={payload.date} />;
+                }}
+                activeDot={{ r: 4, fill: `var(--editorial-${tracker.color})`, stroke: '#ffffff', strokeWidth: 1 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
       {/* Main logging interactive widget */}
       <div className="flex-1 flex flex-col justify-center items-center py-2">
