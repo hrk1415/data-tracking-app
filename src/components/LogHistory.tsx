@@ -51,6 +51,8 @@ export function LogHistory({
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const [internalFilterTrackerId, setInternalFilterTrackerId] = useState('all');
   const [internalFilterCategory, setInternalFilterCategory] = useState('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
   const setSearchQuery = externalSetSearchQuery !== undefined ? externalSetSearchQuery : setInternalSearchQuery;
@@ -91,6 +93,14 @@ export function LogHistory({
         return false;
       }
 
+      // Filter by date range
+      if (startDate && log.date < startDate) {
+        return false;
+      }
+      if (endDate && log.date > endDate) {
+        return false;
+      }
+
       // Filter by search query (matches tracker name, note, or date)
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
@@ -118,7 +128,7 @@ export function LogHistory({
 
       return true;
     });
-  }, [sortedLogs, trackers, filterTrackerId, filterCategory, searchQuery]);
+  }, [sortedLogs, trackers, filterTrackerId, filterCategory, searchQuery, startDate, endDate]);
 
   const startEdit = (log: LogEntry) => {
     setEditingLogId(log.id);
@@ -290,10 +300,100 @@ export function LogHistory({
             </select>
           </div>
         </div>
+
+        {/* Date Range Picker */}
+        <div className="pt-4 border-t border-editorial-dark/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <span className="text-xs font-mono font-medium text-editorial-dark/60 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+              <Calendar size={13} className="text-editorial-accent" />
+              Date Range:
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-editorial-bg border border-editorial-dark/20 text-xs font-mono px-2.5 py-1.5 focus:border-editorial-accent outline-hidden cursor-pointer w-[145px] text-editorial-dark"
+                title="Start Date"
+              />
+              <span className="text-xs font-mono text-editorial-dark/40">to</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-editorial-bg border border-editorial-dark/20 text-xs font-mono px-2.5 py-1.5 focus:border-editorial-accent outline-hidden cursor-pointer w-[145px] text-editorial-dark"
+                title="End Date"
+              />
+
+              {(startDate || endDate) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartDate('');
+                    setEndDate('');
+                  }}
+                  className="text-[10px] font-mono text-rose-500 hover:text-rose-700 hover:underline flex items-center gap-0.5 cursor-pointer ml-1"
+                  title="Clear date filter"
+                >
+                  <X size={12} />
+                  <span>Clear</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Quick presets */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-mono text-editorial-dark/40 uppercase">Presets:</span>
+            {[
+              { label: 'Today', getValue: () => {
+                const today = new Date().toISOString().split('T')[0];
+                return { start: today, end: today };
+              }},
+              { label: 'Last 7 Days', getValue: () => {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(end.getDate() - 6);
+                return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+              }},
+              { label: 'Last 30 Days', getValue: () => {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(end.getDate() - 29);
+                return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+              }},
+              { label: 'This Month', getValue: () => {
+                const now = new Date();
+                const start = new Date(now.getFullYear(), now.getMonth(), 1);
+                const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+              }},
+              { label: 'This Year', getValue: () => {
+                const now = new Date();
+                const start = new Date(now.getFullYear(), 0, 1);
+                const end = new Date(now.getFullYear(), 11, 31);
+                return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+              }},
+            ].map(preset => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => {
+                  const range = preset.getValue();
+                  setStartDate(range.start);
+                  setEndDate(range.end);
+                }}
+                className="px-2 py-1 text-[10px] font-mono border border-editorial-dark/10 bg-editorial-dark/[0.02] hover:bg-editorial-dark/5 hover:border-editorial-dark/25 text-editorial-dark/70 transition-all cursor-pointer"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Active Filters Info Bar */}
-      {(searchQuery || filterTrackerId !== 'all' || filterCategory !== 'all') && (
+      {(searchQuery || filterTrackerId !== 'all' || filterCategory !== 'all' || startDate || endDate) && (
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-editorial-accent-light/15 border-l-2 border-editorial-accent text-xs text-editorial-dark/80 font-sans">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono font-semibold uppercase tracking-wider text-[10px] text-editorial-dark/50">Filter Status:</span>
@@ -315,6 +415,11 @@ export function LogHistory({
                 Category: <strong className="font-serif font-semibold">{filterCategory}</strong>
               </span>
             )}
+            {(startDate || endDate) && (
+              <span className="bg-editorial-bg px-2 py-0.5 border border-editorial-dark/10">
+                Range: <strong className="font-mono font-semibold">{startDate || 'Any'}</strong> to <strong className="font-mono font-semibold">{endDate || 'Any'}</strong>
+              </span>
+            )}
           </div>
           <button
             type="button"
@@ -322,6 +427,8 @@ export function LogHistory({
               setSearchQuery('');
               setFilterTrackerId('all');
               setFilterCategory('all');
+              setStartDate('');
+              setEndDate('');
             }}
             className="text-[10px] font-mono uppercase tracking-widest text-editorial-accent hover:text-editorial-dark font-bold underline underline-offset-2 shrink-0 cursor-pointer"
           >
