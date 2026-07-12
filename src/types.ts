@@ -104,7 +104,21 @@ export interface Milestone {
   text: string;
   importance?: 'low' | 'medium' | 'high';
   notes?: string;
+  category?: string; // Optional category tag
 }
+
+export interface MilestoneCategory {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export const MILESTONE_CATEGORIES: MilestoneCategory[] = [
+  { id: 'personal', name: 'Personal', color: 'emerald' },
+  { id: 'work', name: 'Work', color: 'indigo' },
+  { id: 'fitness', name: 'Fitness', color: 'blue' },
+  { id: 'other', name: 'Other', color: 'violet' }
+];
 
 export interface DailyReflection {
   date: string; // YYYY-MM-DD

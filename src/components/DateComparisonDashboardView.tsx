@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { Tracker, LogEntry, DailyReflection, COLOR_MAP } from '../types';
+import { Tracker, LogEntry, DailyReflection, COLOR_MAP, MILESTONE_CATEGORIES } from '../types';
 import { TrackerCard } from './TrackerCard';
 import { 
   BookOpen, 
@@ -370,7 +370,23 @@ export function DateComparisonDashboardView({
                         {ms.time}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <span className="font-serif italic font-medium text-editorial-dark leading-tight">{ms.text}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                          {ms.category && (() => {
+                            const cat = MILESTONE_CATEGORIES.find(c => c.id === ms.category);
+                            if (!cat) return null;
+                            const colorClasses = 
+                              cat.color === 'emerald' ? 'bg-editorial-emerald-light text-editorial-emerald border-editorial-emerald/25' :
+                              cat.color === 'indigo' ? 'bg-editorial-indigo-light text-editorial-indigo border-editorial-indigo/25' :
+                              cat.color === 'blue' ? 'bg-editorial-blue-light text-editorial-blue border-editorial-blue/25' :
+                              'bg-editorial-violet-light text-editorial-violet border-editorial-violet/25';
+                            return (
+                              <span className={`shrink-0 text-[8px] font-mono font-bold uppercase px-1 py-0.2 border rounded-none ${colorClasses}`}>
+                                {cat.name}
+                              </span>
+                            );
+                          })()}
+                          <span className="font-serif italic font-medium text-editorial-dark leading-tight">{ms.text}</span>
+                        </div>
                         {ms.notes && <p className="text-[10px] text-editorial-dark/50 italic mt-0.5">{ms.notes}</p>}
                       </div>
                     </div>
@@ -463,7 +479,23 @@ export function DateComparisonDashboardView({
                         {ms.time}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <span className="font-serif italic font-medium text-editorial-dark leading-tight">{ms.text}</span>
+                        <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                          {ms.category && (() => {
+                            const cat = MILESTONE_CATEGORIES.find(c => c.id === ms.category);
+                            if (!cat) return null;
+                            const colorClasses = 
+                              cat.color === 'emerald' ? 'bg-editorial-emerald-light text-editorial-emerald border-editorial-emerald/25' :
+                              cat.color === 'indigo' ? 'bg-editorial-indigo-light text-editorial-indigo border-editorial-indigo/25' :
+                              cat.color === 'blue' ? 'bg-editorial-blue-light text-editorial-blue border-editorial-blue/25' :
+                              'bg-editorial-violet-light text-editorial-violet border-editorial-violet/25';
+                            return (
+                              <span className={`shrink-0 text-[8px] font-mono font-bold uppercase px-1 py-0.2 border rounded-none ${colorClasses}`}>
+                                {cat.name}
+                              </span>
+                            );
+                          })()}
+                          <span className="font-serif italic font-medium text-editorial-dark leading-tight">{ms.text}</span>
+                        </div>
                         {ms.notes && <p className="text-[10px] text-editorial-dark/50 italic mt-0.5">{ms.notes}</p>}
                       </div>
                     </div>

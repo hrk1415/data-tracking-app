@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
-import { Tracker, LogEntry, CATEGORIES, COLOR_MAP, DailyReflection, Milestone } from './types';
+import { Tracker, LogEntry, CATEGORIES, COLOR_MAP, DailyReflection, Milestone, MILESTONE_CATEGORIES } from './types';
 import { loadData, saveTrackers, saveLogs, saveReflections, exportDataAsJson, importDataFromJson } from './utils/storage';
 import { importLogsFromCSV, parseCSV, ColumnMapping } from './utils/csvParser';
 import { AddTrackerModal } from './components/AddTrackerModal';
@@ -160,6 +160,7 @@ export default function App() {
   const [milestoneTextInput, setMilestoneTextInput] = useState<string>('');
   const [milestoneImportanceInput, setMilestoneImportanceInput] = useState<'low' | 'medium' | 'high' | undefined>(undefined);
   const [milestoneNotesInput, setMilestoneNotesInput] = useState<string>('');
+  const [milestoneCategoryInput, setMilestoneCategoryInput] = useState<string>('');
 
   const getCurrentTimeHHMM = () => {
     const now = new Date();
@@ -340,7 +341,7 @@ export default function App() {
     saveReflections(updated);
   };
 
-  const handleAddMilestone = (date: string, time: string, text: string, importance?: 'low' | 'medium' | 'high', notes?: string) => {
+  const handleAddMilestone = (date: string, time: string, text: string, importance?: 'low' | 'medium' | 'high', notes?: string, category?: string) => {
     if (!text.trim() || !time) return;
     const newMilestone: Milestone = {
       id: Math.random().toString(36).substring(2, 9),
@@ -348,6 +349,7 @@ export default function App() {
       text: text.trim(),
       importance,
       notes: notes?.trim() || undefined,
+      category: category || undefined,
     };
 
     let updated: DailyReflection[];
@@ -3015,10 +3017,11 @@ export default function App() {
                       onSubmit={(e) => {
                         e.preventDefault();
                         if (milestoneTextInput.trim()) {
-                          handleAddMilestone(selectedDate, milestoneTimeInput, milestoneTextInput, milestoneImportanceInput, milestoneNotesInput);
+                          handleAddMilestone(selectedDate, milestoneTimeInput, milestoneTextInput, milestoneImportanceInput, milestoneNotesInput, milestoneCategoryInput);
                           setMilestoneTextInput('');
                           setMilestoneNotesInput('');
                           setMilestoneImportanceInput(undefined);
+                          setMilestoneCategoryInput('');
                         }
                       }}
                       className="space-y-2 bg-editorial-dark/[0.02] border border-editorial-dark/10 p-3"
@@ -3056,6 +3059,22 @@ export default function App() {
                             <option value="low" className="bg-editorial-bg text-editorial-blue font-semibold">Low Priority</option>
                             <option value="medium" className="bg-editorial-bg text-editorial-orange font-semibold">Medium Priority</option>
                             <option value="high" className="bg-editorial-bg text-editorial-rose font-semibold">High Priority</option>
+                          </select>
+                        </div>
+
+                        {/* Optional Category Dropdown Selector */}
+                        <div className="flex items-center border border-editorial-dark/20 bg-editorial-bg px-2 shrink-0 sm:w-36">
+                          <select
+                            value={milestoneCategoryInput}
+                            onChange={(e) => setMilestoneCategoryInput(e.target.value)}
+                            className="w-full bg-transparent border-0 text-xs font-mono text-editorial-dark p-1.5 outline-hidden focus:ring-0 cursor-pointer font-semibold"
+                          >
+                            <option value="" className="bg-editorial-bg text-editorial-dark/60 font-semibold">Category...</option>
+                            {MILESTONE_CATEGORIES.map(cat => (
+                              <option key={cat.id} value={cat.id} className="bg-editorial-bg text-editorial-dark font-semibold">
+                                {cat.name}
+                              </option>
+                            ))}
                           </select>
                         </div>
 
@@ -3106,6 +3125,20 @@ export default function App() {
                                       {ms.importance}
                                     </span>
                                   )}
+                                  {ms.category && (() => {
+                                    const cat = MILESTONE_CATEGORIES.find(c => c.id === ms.category);
+                                    if (!cat) return null;
+                                    const colorClasses = 
+                                      cat.color === 'emerald' ? 'bg-editorial-emerald-light text-editorial-emerald border-editorial-emerald/25' :
+                                      cat.color === 'indigo' ? 'bg-editorial-indigo-light text-editorial-indigo border-editorial-indigo/25' :
+                                      cat.color === 'blue' ? 'bg-editorial-blue-light text-editorial-blue border-editorial-blue/25' :
+                                      'bg-editorial-violet-light text-editorial-violet border-editorial-violet/25';
+                                    return (
+                                      <span className={`shrink-0 text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 border rounded-none ${colorClasses}`}>
+                                        {cat.name}
+                                      </span>
+                                    );
+                                  })()}
                                   <span className="text-xs font-serif font-semibold italic text-editorial-dark/85 leading-relaxed break-words">
                                     {ms.text}
                                   </span>
@@ -3170,6 +3203,15 @@ export default function App() {
                             }`}>
                               {ms.time}
                             </span>
+                            {ms.category && (() => {
+                              const cat = MILESTONE_CATEGORIES.find(c => c.id === ms.category);
+                              if (!cat) return null;
+                              return (
+                                <span className="font-mono text-[8px] font-extrabold uppercase tracking-widest text-editorial-dark/50 mr-0.5 border-r border-editorial-dark/15 pr-1.5 leading-none select-none">
+                                  {cat.name}
+                                </span>
+                              );
+                            })()}
                             <span className="text-xs font-serif font-medium text-editorial-dark/95 leading-none">
                               {ms.text}
                             </span>
@@ -3359,6 +3401,8 @@ export default function App() {
                     setSelectedDate(date);
                     setCurrentTab('dashboard');
                   }}
+                  reflections={reflections}
+                  onDeleteMilestone={handleDeleteMilestone}
                 />
               </motion.div>
             )}
