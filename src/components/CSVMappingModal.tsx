@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Check, ArrowRight, HelpCircle, Sliders } from 'lucide-react';
+import { X, Check, ArrowRight, HelpCircle, Sliders, Star, Trash2 } from 'lucide-react';
 import { ColumnMapping, parseCSV } from '../utils/csvParser';
 
 interface FormatPreset {
@@ -100,6 +100,20 @@ const PRESETS: FormatPreset[] = [
   }
 ];
 
+interface SavedPreset {
+  id: string;
+  name: string;
+  dateHeader?: string;
+  nameHeader?: string;
+  valHeader?: string;
+  catHeader?: string;
+  unitHeader?: string;
+  goalHeader?: string;
+  notesHeader?: string;
+  timestampHeader?: string;
+  useSmartFormatting: boolean;
+}
+
 interface CSVMappingModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -125,6 +139,12 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm, 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [step, setStep] = useState<'preview' | 'mapping'>('preview');
 
+  // Custom favorite mapping configurations state
+  const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
+  const [isSavingPreset, setIsSavingPreset] = useState<boolean>(false);
+  const [newPresetName, setNewPresetName] = useState<string>('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const parsedData = React.useMemo(() => {
     return parseCSV(csvText);
   }, [csvText]);
@@ -133,7 +153,29 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm, 
     return parsedData.slice(1, 6);
   }, [parsedData]);
 
-  const applyPreset = (presetId: string) => {
+  const applyPreset = (presetId: string, currentSavedPresets: SavedPreset[] = savedPresets) => {
+    if (presetId.startsWith('custom_')) {
+      const pId = presetId.substring(7);
+      const saved = currentSavedPresets.find(p => p.id === pId);
+      if (saved) {
+        const findIndexByHeader = (headerName?: string) => {
+          if (!headerName) return -1;
+          return headers.findIndex(h => h.trim() === headerName.trim());
+        };
+
+        setDateIdx(findIndexByHeader(saved.dateHeader));
+        setNameIdx(findIndexByHeader(saved.nameHeader));
+        setValIdx(findIndexByHeader(saved.valHeader));
+        setCatIdx(findIndexByHeader(saved.catHeader));
+        setUnitIdx(findIndexByHeader(saved.unitHeader));
+        setGoalIdx(findIndexByHeader(saved.goalHeader));
+        setNotesIdx(findIndexByHeader(saved.notesHeader));
+        setTimestampIdx(findIndexByHeader(saved.timestampHeader));
+        setUseSmartFormatting(saved.useSmartFormatting);
+      }
+      return;
+    }
+
     const preset = PRESETS.find(p => p.id === presetId);
     if (!preset || presetId === 'manual') return;
 
@@ -184,12 +226,74 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm, 
     setTimestampIdx(tIdx);
   };
 
+  const handleSavePreset = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaveError(null);
+
+    if (!newPresetName.trim()) {
+      setSaveError('Please enter a name for the preset.');
+      return;
+    }
+
+    if (dateIdx === -1 || nameIdx === -1 || valIdx === -1) {
+      setSaveError('You must map the required fields (Date, Tracker Name, and Value) before saving.');
+      return;
+    }
+
+    const newPreset: SavedPreset = {
+      id: Math.random().toString(36).substring(2, 9),
+      name: newPresetName.trim(),
+      dateHeader: headers[dateIdx] || undefined,
+      nameHeader: headers[nameIdx] || undefined,
+      valHeader: headers[valIdx] || undefined,
+      catHeader: catIdx !== -1 ? headers[catIdx] : undefined,
+      unitHeader: unitIdx !== -1 ? headers[unitIdx] : undefined,
+      goalHeader: goalIdx !== -1 ? headers[goalIdx] : undefined,
+      notesHeader: notesIdx !== -1 ? headers[notesIdx] : undefined,
+      timestampHeader: timestampIdx !== -1 ? headers[timestampIdx] : undefined,
+      useSmartFormatting,
+    };
+
+    const updated = [...savedPresets, newPreset];
+    setSavedPresets(updated);
+    localStorage.setItem('csv_custom_mapping_presets', JSON.stringify(updated));
+    setSelectedPreset(`custom_${newPreset.id}`);
+    setNewPresetName('');
+    setIsSavingPreset(false);
+  };
+
+  const handleDeletePreset = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const updated = savedPresets.filter(p => p.id !== id);
+    setSavedPresets(updated);
+    localStorage.setItem('csv_custom_mapping_presets', JSON.stringify(updated));
+    if (selectedPreset === `custom_${id}`) {
+      setSelectedPreset('auto');
+      applyPreset('auto', updated);
+    }
+  };
+
   // Reset and auto-detect when modal opens or headers change
   useEffect(() => {
     if (isOpen && headers.length > 0) {
+      const stored = localStorage.getItem('csv_custom_mapping_presets');
+      let currentPresets: SavedPreset[] = [];
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setSavedPresets(parsed);
+          currentPresets = parsed;
+        } catch (err) {
+          console.error('Failed to parse saved presets:', err);
+        }
+      }
       setSelectedPreset('auto');
-      applyPreset('auto');
+      applyPreset('auto', currentPresets);
       setStep('preview');
+      setIsSavingPreset(false);
+      setNewPresetName('');
+      setSaveError(null);
     }
   }, [isOpen, headers]);
 
@@ -384,28 +488,212 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm, 
                   {/* Format Preset Selector */}
                   <div className="bg-editorial-accent-light/20 border border-editorial-dark/10 p-4 space-y-4">
                     <div className="space-y-2">
-                      <label className="block text-xs font-mono font-medium text-editorial-dark/60 uppercase tracking-wider">
-                        Common CSV Formats Preset:
-                      </label>
-                      <select
-                        value={selectedPreset}
-                        onChange={(e) => {
-                          const nextPreset = e.target.value;
-                          setSelectedPreset(nextPreset);
-                          applyPreset(nextPreset);
-                        }}
-                        className="w-full rounded-none border border-editorial-dark/20 px-3 py-2.5 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all cursor-pointer font-serif font-medium"
-                      >
-                        {PRESETS.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-editorial-dark/60 font-sans leading-tight">
-                        {PRESETS.find((p) => p.id === selectedPreset)?.description}
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-mono font-medium text-editorial-dark/60 uppercase tracking-wider">
+                          Common CSV Formats Preset:
+                        </label>
+                        {savedPresets.length > 0 && (
+                          <span className="text-[10px] font-mono text-editorial-accent font-semibold flex items-center gap-1">
+                            ⭐ {savedPresets.length} saved configuration{savedPresets.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <select
+                          value={selectedPreset}
+                          onChange={(e) => {
+                            const nextPreset = e.target.value;
+                            setSelectedPreset(nextPreset);
+                            applyPreset(nextPreset);
+                          }}
+                          className="flex-1 rounded-none border border-editorial-dark/20 px-3 py-2.5 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none transition-all cursor-pointer font-serif font-medium"
+                        >
+                          <optgroup label="Standard Presets">
+                            {PRESETS.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                          {savedPresets.length > 0 && (
+                            <optgroup label="⭐ Saved Favorites">
+                              {savedPresets.map((p) => (
+                                <option key={p.id} value={`custom_${p.id}`}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+
+                        {/* Save Current button */}
+                        <button
+                          type="button"
+                          disabled={dateIdx === -1 || nameIdx === -1 || valIdx === -1}
+                          onClick={() => {
+                            setSaveError(null);
+                            setIsSavingPreset(!isSavingPreset);
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-2 text-xs font-mono uppercase tracking-wider transition-all border ${
+                            dateIdx === -1 || nameIdx === -1 || valIdx === -1
+                              ? 'opacity-40 cursor-not-allowed bg-editorial-bg text-editorial-dark/40 border-editorial-dark/10'
+                              : isSavingPreset
+                              ? 'bg-editorial-orange text-white border-editorial-orange'
+                              : 'bg-white hover:bg-editorial-accent-light/30 text-editorial-dark border-editorial-dark/20 hover:border-editorial-dark/40 cursor-pointer'
+                          }`}
+                          title={
+                            dateIdx === -1 || nameIdx === -1 || valIdx === -1
+                              ? 'Configure required fields first to save mapping'
+                              : 'Save current columns mapping configuration'
+                          }
+                        >
+                          <Star size={13} className={isSavingPreset ? 'fill-white' : ''} />
+                          <span>Save Preset</span>
+                        </button>
+                      </div>
+
+                      {/* Active preset description / custom header review */}
+                      {(() => {
+                        if (selectedPreset.startsWith('custom_')) {
+                          const pId = selectedPreset.substring(7);
+                          const saved = savedPresets.find(p => p.id === pId);
+                          if (saved) {
+                            return (
+                              <div className="bg-white/60 border border-editorial-dark/5 p-2 rounded-none space-y-1">
+                                <p className="text-[10px] text-editorial-dark/70 font-sans">
+                                  <strong>Active Saved Favorite:</strong> Maps columns based on column headers:
+                                </p>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-2 gap-y-1 font-mono text-[9px] text-editorial-dark/65">
+                                  {saved.dateHeader && <div>📅 Date: <span className="text-editorial-orange font-semibold">{saved.dateHeader}</span></div>}
+                                  {saved.nameHeader && <div>🏷️ Tracker: <span className="text-editorial-orange font-semibold">{saved.nameHeader}</span></div>}
+                                  {saved.valHeader && <div>🔢 Value: <span className="text-editorial-orange font-semibold">{saved.valHeader}</span></div>}
+                                  {saved.catHeader && <div>📂 Category: <span className="text-editorial-dark/50">{saved.catHeader}</span></div>}
+                                  {saved.unitHeader && <div>⚖️ Unit: <span className="text-editorial-dark/50">{saved.unitHeader}</span></div>}
+                                  {saved.goalHeader && <div>🎯 Goal: <span className="text-editorial-dark/50">{saved.goalHeader}</span></div>}
+                                  {saved.notesHeader && <div>📝 Notes: <span className="text-editorial-dark/50">{saved.notesHeader}</span></div>}
+                                  {saved.timestampHeader && <div>⏰ Time: <span className="text-editorial-dark/50">{saved.timestampHeader}</span></div>}
+                                </div>
+                              </div>
+                            );
+                          }
+                        }
+                        return (
+                          <p className="text-[10px] text-editorial-dark/60 font-sans leading-tight">
+                            {PRESETS.find((p) => p.id === selectedPreset)?.description}
+                          </p>
+                        );
+                      })()}
                     </div>
+
+                    {/* Inline Preset Creator Form */}
+                    <AnimatePresence>
+                      {isSavingPreset && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className="bg-white border border-editorial-dark/15 p-3.5 space-y-3 overflow-hidden"
+                        >
+                          <div className="flex items-center gap-1.5 text-xs font-serif font-semibold text-editorial-dark">
+                            <Star size={13} className="text-editorial-orange fill-editorial-orange" />
+                            <span>Save Current Column Mapping Configuration</span>
+                          </div>
+                          
+                          <p className="text-[10px] text-editorial-dark/60 leading-relaxed">
+                            Give your configuration a memorable name. We will save the column header names (<strong>{headers[dateIdx]}</strong>, <strong>{headers[nameIdx]}</strong>, etc.) so we can automatically align future spreadsheets even if they are in a different order.
+                          </p>
+
+                          <div className="space-y-1.5">
+                            <label className="block text-[9px] font-mono uppercase tracking-wider text-editorial-dark/50">
+                              Preset Name
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={newPresetName}
+                                onChange={(e) => setNewPresetName(e.target.value)}
+                                placeholder="e.g., Weekly Sleep Tracker, Fitbit Export"
+                                className="flex-1 rounded-none border border-editorial-dark/20 px-2.5 py-1.5 text-xs bg-editorial-bg text-editorial-dark focus:border-editorial-orange outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleSavePreset}
+                                className="bg-editorial-dark text-editorial-bg hover:bg-editorial-orange hover:text-white px-4 py-1.5 text-xs font-mono uppercase tracking-wider transition-all cursor-pointer font-bold"
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsSavingPreset(false);
+                                  setNewPresetName('');
+                                  setSaveError(null);
+                                }}
+                                className="border border-editorial-dark/20 hover:bg-editorial-accent-light/20 px-3 py-1.5 text-xs font-mono uppercase tracking-wider transition-colors cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                            {saveError && (
+                              <p className="text-[10px] text-rose-600 font-sans italic">
+                                ⚠️ {saveError}
+                              </p>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Manage Saved Favorites */}
+                    {savedPresets.length > 0 && (
+                      <div className="pt-3 border-t border-editorial-dark/10 space-y-2">
+                        <label className="block text-[10px] font-mono uppercase tracking-wider text-editorial-dark/50">
+                          Your Favorite Presets ({savedPresets.length}):
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto pr-1 scrollbar-thin">
+                          {savedPresets.map((preset) => {
+                            const isSelected = selectedPreset === `custom_${preset.id}`;
+                            return (
+                              <div
+                                key={preset.id}
+                                className={`flex items-center justify-between p-2 transition-all border ${
+                                  isSelected
+                                    ? 'bg-editorial-orange-light/10 border-editorial-orange'
+                                    : 'bg-white/40 hover:bg-white border-editorial-dark/10 hover:border-editorial-dark/20'
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedPreset(`custom_${preset.id}`);
+                                    applyPreset(`custom_${preset.id}`);
+                                  }}
+                                  className="flex-1 text-left min-w-0 pr-2 cursor-pointer"
+                                >
+                                  <div className="font-serif font-semibold text-xs text-editorial-dark truncate flex items-center gap-1">
+                                    <Star size={10} className={`shrink-0 ${isSelected ? 'text-editorial-orange fill-editorial-orange' : 'text-editorial-dark/40'}`} />
+                                    <span className="truncate">{preset.name}</span>
+                                  </div>
+                                  <p className="text-[8px] font-mono text-editorial-dark/40 truncate">
+                                    {preset.dateHeader} • {preset.nameHeader} • {preset.valHeader}
+                                  </p>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDeletePreset(preset.id, e)}
+                                  className="text-editorial-dark/40 hover:text-rose-600 p-1 hover:bg-rose-500/5 transition-colors cursor-pointer"
+                                  title="Delete saved preset"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Smart Formatting Toggle */}
                     <div className="pt-3 border-t border-editorial-dark/10 flex items-start gap-3">
