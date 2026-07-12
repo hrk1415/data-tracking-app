@@ -3197,6 +3197,7 @@ export default function App() {
                   onDeleteTracker={handleDeleteTracker}
                   onUpdateTracker={handleUpdateTracker}
                   logsCountMap={logsCountMap}
+                  logs={logs}
                 />
               </motion.div>
             )}

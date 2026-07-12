@@ -14,6 +14,7 @@ export interface Tracker {
   color: string; // e.g., 'emerald', 'blue', 'indigo', 'violet', 'amber', 'rose', 'orange'
   icon: string; // Name of Lucide icon
   targetValue?: number; // Optional daily goal/target
+  yearlyGoal?: number; // Optional long-term yearly goal
   description?: string;
   createdAt: string;
   tags?: string[]; // Optional tags for tracking/grouping, e.g. #productivity, #health
