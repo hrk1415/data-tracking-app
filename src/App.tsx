@@ -19,6 +19,7 @@ import { LucideIcon } from './components/LucideIcon';
 import { GoalNotesPanel } from './components/GoalNotesPanel';
 import { MotivationalQuote } from './components/MotivationalQuote';
 import { WeeklySummaryDashboardWidget } from './components/WeeklySummaryDashboardWidget';
+import { DateComparisonDashboardView } from './components/DateComparisonDashboardView';
 import {
   LayoutDashboard,
   BarChart2,
@@ -141,6 +142,14 @@ export default function App() {
   // Dashboard filtering state
   const [dashboardSearchQuery, setDashboardSearchQuery] = useState('');
   const [dashboardSelectedTag, setDashboardSelectedTag] = useState<string>('all');
+  
+  // Side-by-side date comparison state
+  const [isComparing, setIsComparing] = useState<boolean>(false);
+  const [comparisonDate, setComparisonDate] = useState<string>(() => {
+    // Default comparison date is 1 day before selectedDate (yesterday relative to current time)
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return yesterday.toISOString().split('T')[0];
+  });
 
   // Reflection editor state
   const [reflectionInput, setReflectionInput] = useState<string>('');
@@ -1465,6 +1474,73 @@ export default function App() {
     });
   }, [selectedDate]);
 
+  const formattedComparisonDate = useMemo(() => {
+    if (!comparisonDate) return '';
+    const dateObj = new Date(comparisonDate + 'T12:00:00');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const yesterdayStr = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    if (comparisonDate === todayStr) return 'Today';
+    if (comparisonDate === yesterdayStr) return 'Yesterday';
+
+    return dateObj.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }, [comparisonDate]);
+
+  const comparisonDailyStats = useMemo(() => {
+    const activeOnDate = trackers.length;
+    let completedGoalsOnDate = 0;
+    let trackersWithGoals = 0;
+
+    trackers.forEach(t => {
+      if (t.targetValue) {
+        trackersWithGoals++;
+        const tLogs = logs.filter(l => l.trackerId === t.id && l.date === comparisonDate);
+        const totalVal = t.type === 'counter'
+          ? tLogs.reduce((sum, l) => sum + l.value, 0)
+          : (tLogs.length > 0 ? tLogs[tLogs.length - 1].value : 0);
+
+        if (totalVal >= t.targetValue) {
+          completedGoalsOnDate++;
+        }
+      }
+    });
+
+    return {
+      activeCount: activeOnDate,
+      withGoals: trackersWithGoals,
+      completedGoals: completedGoalsOnDate,
+      completionRate: trackersWithGoals > 0 ? Math.round((completedGoalsOnDate / trackersWithGoals) * 100) : 0,
+    };
+  }, [trackers, logs, comparisonDate]);
+
+  const comparisonChartData = useMemo(() => {
+    return filteredTrackers.map(t => {
+      // Date A logs
+      const logsA = logs.filter(l => l.trackerId === t.id && l.date === selectedDate);
+      const valA = t.type === 'counter'
+        ? logsA.reduce((sum, l) => sum + l.value, 0)
+        : (logsA.length > 0 ? logsA[logsA.length - 1].value : 0);
+
+      // Date B logs
+      const logsB = logs.filter(l => l.trackerId === t.id && l.date === comparisonDate);
+      const valB = t.type === 'counter'
+        ? logsB.reduce((sum, l) => sum + l.value, 0)
+        : (logsB.length > 0 ? logsB[logsB.length - 1].value : 0);
+
+      return {
+        name: t.name,
+        valueA: valA,
+        valueB: valB,
+        unit: t.unit || ''
+      };
+    });
+  }, [filteredTrackers, logs, selectedDate, comparisonDate]);
+
   const activeReflection = useMemo(() => {
     return reflections.find(r => r.date === selectedDate);
   }, [reflections, selectedDate]);
@@ -2136,48 +2212,137 @@ export default function App() {
                 className="space-y-6"
               >
                 {/* Dashboard Sub Header with Date Selector */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-editorial-bg p-6 rounded-none border border-editorial-dark/15">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-editorial-bg p-6 rounded-none border border-editorial-dark/15">
                   <div>
-                    <h2 className="text-2xl font-serif font-medium text-editorial-dark tracking-wide flex items-center gap-2">
+                    <h2 className="text-2xl font-serif font-medium text-editorial-dark tracking-wide flex flex-wrap items-center gap-2">
                       <Calendar size={20} className="text-editorial-accent" />
-                      {formattedSelectedDate} Logs
+                      {isComparing ? (
+                        <>
+                          Comparing <span className="text-editorial-accent underline decoration-dotted">{formattedSelectedDate}</span> vs <span className="text-editorial-dark/70 italic underline decoration-dotted">{formattedComparisonDate}</span>
+                        </>
+                      ) : (
+                        <>{formattedSelectedDate} Logs</>
+                      )}
                     </h2>
-                    <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">Select a date to view and log metrics</p>
+                    <p className="text-xs font-sans italic text-editorial-dark/60 mt-1">
+                      {isComparing 
+                        ? "Interactive side-by-side split screen view with visual change markers" 
+                        : "Select a date to view and log metrics"}
+                    </p>
                   </div>
 
-                  {/* Elegant Calendar Switcher */}
-                  <div className="flex items-center gap-2">
+                  {/* Elegant Calendar Switchers and Compare Toggle */}
+                  <div className="flex flex-wrap items-center gap-4">
+                    {/* Compare Dates Toggle */}
                     <button
                       type="button"
-                      onClick={() => shiftDate(-1)}
-                      className="p-2 border border-editorial-dark/20 hover:bg-editorial-accent-light rounded-none text-editorial-dark transition-colors"
-                      title="Previous Day"
+                      onClick={() => setIsComparing(!isComparing)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border transition-all cursor-pointer ${
+                        isComparing
+                          ? 'bg-editorial-accent text-editorial-bg border-editorial-accent font-bold shadow-xs'
+                          : 'bg-transparent text-editorial-dark/65 border-editorial-dark/20 hover:border-editorial-dark/40 hover:text-editorial-dark'
+                      }`}
                     >
-                      <ChevronLeft size={16} />
+                      <Sliders size={12} />
+                      <span>{isComparing ? 'Disable Comparison' : 'Compare Dates'}</span>
                     </button>
 
-                    <div className="relative">
-                      <input
-                        type="date"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="rounded-none border border-editorial-dark/20 px-3.5 py-1.5 text-xs font-mono font-semibold text-editorial-dark outline-hidden bg-editorial-bg focus:border-editorial-accent transition-all cursor-pointer select-none"
-                      />
+                    {/* Left/Right controls for Primary Date */}
+                    <div className="flex items-center gap-1.5 bg-editorial-dark/[0.02] border border-editorial-dark/10 p-1">
+                      <span className="text-[9px] font-mono uppercase text-editorial-dark/50 px-1">Date A:</span>
+                      <button
+                        type="button"
+                        onClick={() => shiftDate(-1)}
+                        className="p-1 border border-editorial-dark/10 hover:bg-editorial-accent-light rounded-none text-editorial-dark transition-colors cursor-pointer"
+                        title="Previous Day"
+                      >
+                        <ChevronLeft size={13} />
+                      </button>
+
+                      <div className="relative">
+                        <input
+                          type="date"
+                          value={selectedDate}
+                          onChange={(e) => setSelectedDate(e.target.value)}
+                          className="rounded-none border-0 p-1 text-[11px] font-mono font-bold text-editorial-dark outline-hidden bg-transparent focus:ring-0 cursor-pointer"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => shiftDate(1)}
+                        className="p-1 border border-editorial-dark/10 hover:bg-editorial-accent-light rounded-none text-editorial-dark transition-colors cursor-pointer"
+                        title="Next Day"
+                      >
+                        <ChevronRight size={13} />
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => shiftDate(1)}
-                      className="p-2 border border-editorial-dark/20 hover:bg-editorial-accent-light rounded-none text-editorial-dark transition-colors"
-                      title="Next Day"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
+                    {/* Left/Right controls for Comparison Date (only if isComparing) */}
+                    {isComparing && (
+                      <div className="flex items-center gap-1.5 bg-editorial-dark/[0.02] border border-editorial-dark/15 p-1 animate-fade-in">
+                        <span className="text-[9px] font-mono uppercase text-editorial-dark/50 px-1">Date B:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const d = new Date(comparisonDate + 'T12:00:00');
+                            d.setDate(d.getDate() - 1);
+                            setComparisonDate(d.toISOString().split('T')[0]);
+                          }}
+                          className="p-1 border border-editorial-dark/10 hover:bg-editorial-accent-light rounded-none text-editorial-dark transition-colors cursor-pointer"
+                          title="Previous Day"
+                        >
+                          <ChevronLeft size={13} />
+                        </button>
+
+                        <div className="relative">
+                          <input
+                            type="date"
+                            value={comparisonDate}
+                            onChange={(e) => setComparisonDate(e.target.value)}
+                            className="rounded-none border-0 p-1 text-[11px] font-mono font-bold text-editorial-dark outline-hidden bg-transparent focus:ring-0 cursor-pointer"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const d = new Date(comparisonDate + 'T12:00:00');
+                            d.setDate(d.getDate() + 1);
+                            setComparisonDate(d.toISOString().split('T')[0]);
+                          }}
+                          className="p-1 border border-editorial-dark/10 hover:bg-editorial-accent-light rounded-none text-editorial-dark transition-colors cursor-pointer"
+                          title="Next Day"
+                        >
+                          <ChevronRight size={13} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Daily Motivational Quote Widget */}
-                <MotivationalQuote />
+                {isComparing ? (
+                  <DateComparisonDashboardView
+                    trackers={trackers}
+                    filteredTrackers={filteredTrackers}
+                    logs={logs}
+                    reflections={reflections}
+                    selectedDate={selectedDate}
+                    comparisonDate={comparisonDate}
+                    formattedSelectedDate={formattedSelectedDate}
+                    formattedComparisonDate={formattedComparisonDate}
+                    dailyStats={dailyStats}
+                    comparisonDailyStats={comparisonDailyStats}
+                    comparisonChartData={comparisonChartData}
+                    onLogValue={handleLogValue}
+                    onDeleteLog={handleDeleteLog}
+                    onSaveGoalNote={handleSaveGoalNote}
+                    onSaveMilestone={handleSaveMilestone}
+                  />
+                ) : (
+                  <>
+                    {/* Daily Motivational Quote Widget */}
+                    <MotivationalQuote />
 
                 {/* Trend Alerts Dashboard Section */}
                 {activeTrendAlerts.length > 0 && (
@@ -3154,6 +3319,8 @@ export default function App() {
                     </div>
                   )}
                 </div>
+                </>
+                )}
               </motion.div>
             )}
 
