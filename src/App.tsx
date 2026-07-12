@@ -18,6 +18,7 @@ import { ManageTrackers } from './components/ManageTrackers';
 import { LucideIcon } from './components/LucideIcon';
 import { GoalNotesPanel } from './components/GoalNotesPanel';
 import { MotivationalQuote } from './components/MotivationalQuote';
+import { WeeklySummaryDashboardWidget } from './components/WeeklySummaryDashboardWidget';
 import {
   LayoutDashboard,
   BarChart2,
@@ -2614,6 +2615,13 @@ export default function App() {
                     </div>
                   )}
                 </div>
+
+                {/* Weekly Summary Widget */}
+                <WeeklySummaryDashboardWidget
+                  trackers={trackers}
+                  logs={logs}
+                  selectedDate={selectedDate}
+                />
 
                 {/* Daily Aggregates Bento Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
