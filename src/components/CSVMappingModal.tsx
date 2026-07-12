@@ -106,9 +106,10 @@ interface CSVMappingModalProps {
   headers: string[];
   csvText: string;
   onConfirm: (mapping: ColumnMapping, useSmartFormatting: boolean) => void;
+  onMappingChange?: (mappedCount: number) => void;
 }
 
-export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }: CSVMappingModalProps) {
+export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm, onMappingChange }: CSVMappingModalProps) {
   const [dateIdx, setDateIdx] = useState<number>(-1);
   const [nameIdx, setNameIdx] = useState<number>(-1);
   const [valIdx, setValIdx] = useState<number>(-1);
@@ -191,6 +192,17 @@ export function CSVMappingModal({ isOpen, onClose, headers, csvText, onConfirm }
       setStep('preview');
     }
   }, [isOpen, headers]);
+
+  // Synchronize column mapping count to parent uploader dashboard
+  useEffect(() => {
+    if (isOpen && onMappingChange) {
+      let count = 0;
+      if (dateIdx !== -1) count++;
+      if (nameIdx !== -1) count++;
+      if (valIdx !== -1) count++;
+      onMappingChange(count);
+    }
+  }, [dateIdx, nameIdx, valIdx, isOpen, onMappingChange]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

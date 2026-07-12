@@ -57,7 +57,8 @@ import {
   AlertTriangle,
   AlertCircle,
   HelpCircle,
-  Filter
+  Filter,
+  Sliders
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -122,6 +123,14 @@ export default function App() {
   const [csvRowFilterQuery, setCsvRowFilterQuery] = useState('');
   const [selectedCSVFileName, setSelectedCSVFileName] = useState<string | null>(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+
+  // States for interactive CSV Import Progress Dashboard
+  const [csvImportStep, setCsvImportStep] = useState<'idle' | 'file_loaded' | 'mapping' | 'importing' | 'success' | 'error'>('idle');
+  const [totalParsedRows, setTotalParsedRows] = useState<number>(0);
+  const [mappedColumnsCount, setMappedColumnsCount] = useState<number>(0);
+  const [importedLogsCount, setImportedLogsCount] = useState<number>(0);
+  const [isSimulatingImport, setIsSimulatingImport] = useState<boolean>(false);
+  const [importedProgressPercentage, setImportedProgressPercentage] = useState<number>(0);
 
   // Shared state for filtering history logs, so we can export currently visible logs
   const [historySearchQuery, setHistorySearchQuery] = useState('');
@@ -508,6 +517,21 @@ export default function App() {
     });
     return map;
   }, [logs]);
+
+  // Compute overall percentage for multi-step CSV uploader status bar
+  const overallPercentage = useMemo(() => {
+    if (!selectedCSVFileName) return 0;
+    if (csvImportStep === 'file_loaded') {
+      return 33 + Math.round((mappedColumnsCount / 3) * 33);
+    }
+    if (csvImportStep === 'importing' || isSimulatingImport) {
+      return 66 + Math.round((importedProgressPercentage / 100) * 34);
+    }
+    if (csvImportStep === 'success') {
+      return 100;
+    }
+    return 33;
+  }, [selectedCSVFileName, csvImportStep, mappedColumnsCount, importedProgressPercentage, isSimulatingImport]);
 
   // Extract all unique tags across configured trackers
   const allUniqueTags = useMemo(() => {
@@ -1039,6 +1063,11 @@ export default function App() {
 
         setPendingCSVHeaders(headerRow);
         setPendingCSVText(finalCSVText);
+        setTotalParsedRows(parsed.length - 1);
+        setCsvImportStep('file_loaded');
+        setImportedLogsCount(0);
+        setImportedProgressPercentage(0);
+        setIsSimulatingImport(false);
         // Do NOT open the mapping modal automatically anymore!
       }
     };
@@ -1048,38 +1077,62 @@ export default function App() {
   const handleConfirmCSVMapping = (mapping: ColumnMapping, useSmartFormatting: boolean) => {
     const result = importLogsFromCSV(pendingCSVText, trackers, mapping, useSmartFormatting);
     if (result && result.importedCount > 0) {
-      setTrackers(result.trackers);
-      const updatedLogs = [...logs, ...result.logs];
-      setLogs(updatedLogs);
-      saveTrackers(result.trackers);
-      saveLogs(updatedLogs);
-      
-      // Store imported log IDs to support batch deletion
-      const importedIds = result.logs.map(l => l.id);
-      setLastImportedLogIds(importedIds);
-      
-      const filterSuffix = csvRowFilterQuery.trim() ? ` (filtered by "${csvRowFilterQuery.trim()}")` : '';
-      setCsvImportStatus('success');
-      setCsvImportMessage(`Successfully imported ${result.importedCount} logs${filterSuffix}!`);
-      
-      // Reset selected CSV file states
-      setSelectedCSVFileName(null);
-      setPendingCSVText('');
-      setPendingCSVHeaders([]);
+      setIsSimulatingImport(true);
+      setCsvImportStep('importing');
+      setImportedProgressPercentage(0);
+      setImportedLogsCount(0);
 
-      // Reset status after 5 seconds
-      const timer = setTimeout(() => {
-        setCsvImportStatus(null);
-        setCsvImportMessage('');
-      }, 5000);
+      const totalRows = result.importedCount;
+      let currentProgress = 0;
+
+      const interval = setInterval(() => {
+        // Increment by steps of 10% or at least 1 row
+        const increment = Math.max(1, Math.floor(totalRows / 10));
+        currentProgress += increment;
+
+        if (currentProgress >= totalRows) {
+          clearInterval(interval);
+          setImportedProgressPercentage(100);
+          setImportedLogsCount(totalRows);
+          setCsvImportStep('success');
+          setIsSimulatingImport(false);
+
+          // Perform actual data application
+          setTrackers(result.trackers);
+          const updatedLogs = [...logs, ...result.logs];
+          setLogs(updatedLogs);
+          saveTrackers(result.trackers);
+          saveLogs(updatedLogs);
+          
+          // Store imported log IDs to support batch deletion
+          const importedIds = result.logs.map(l => l.id);
+          setLastImportedLogIds(importedIds);
+          
+          const filterSuffix = csvRowFilterQuery.trim() ? ` (filtered by "${csvRowFilterQuery.trim()}")` : '';
+          setCsvImportStatus('success');
+          setCsvImportMessage(`Successfully imported ${result.importedCount} logs${filterSuffix}!`);
+          
+          // Keep the uploader dashboard showing 100% success state, but clear temporary status messages after 5 seconds
+          setTimeout(() => {
+            setCsvImportStatus(null);
+            setCsvImportMessage('');
+          }, 5000);
+        } else {
+          const pct = Math.round((currentProgress / totalRows) * 100);
+          setImportedProgressPercentage(pct);
+          setImportedLogsCount(currentProgress);
+        }
+      }, 60);
     } else {
+      setCsvImportStep('error');
       setCsvImportStatus('error');
       setCsvImportMessage('Import failed. No valid log rows were parsed or imported.');
       
       // Reset status after 5 seconds
-      const timer = setTimeout(() => {
+      setTimeout(() => {
         setCsvImportStatus(null);
         setCsvImportMessage('');
+        setCsvImportStep('idle');
       }, 5000);
     }
   };
@@ -1473,566 +1526,535 @@ export default function App() {
             exit={{ height: 0, opacity: 0 }}
             className="bg-editorial-bg border-b border-editorial-dark/15 overflow-hidden"
           >
-            <div className="max-w-4xl mx-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6 text-sm items-center">
-              <div>
-                <h4 className="font-serif font-medium text-lg text-editorial-dark flex items-center gap-1.5">
-                  <LucideIcon name="Settings" size={16} className="text-editorial-accent" />
-                  Local State Backups (Offline First)
-                </h4>
-                <p className="text-xs text-editorial-dark/75 mt-1 leading-relaxed">
-                  Your tracking stats are preserved instantly inside your browser's LocalStorage. Export your statistics to keep a physical copy or restore logs on other devices.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-3 items-center justify-start md:justify-end">
-                {/* Export Button */}
-                <button
-                  type="button"
-                  onClick={handleExportData}
-                  className="flex items-center gap-1.5 bg-editorial-accent-light hover:bg-editorial-accent/20 border border-editorial-accent/30 text-editorial-accent font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer"
-                >
-                  <Download size={14} />
-                  Export Data (JSON)
-                </button>
-
-                {/* Export CSV Button */}
-                <button
-                  type="button"
-                  id="export-csv-button"
-                  onClick={handleExportCSV}
-                  className="flex items-center gap-1.5 bg-editorial-orange-light/30 hover:bg-editorial-orange/20 border border-editorial-orange/30 text-editorial-orange font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer"
-                >
-                  <Download size={14} />
-                  Export Logs (CSV)
-                </button>
-
-                {/* Tracker Mapping Search Bar */}
-                <div className="relative inline-flex items-center gap-1.5 shrink-0">
-                  <div className="relative flex items-center bg-editorial-bg border border-editorial-dark/20 hover:border-editorial-dark/45 focus-within:border-editorial-orange text-editorial-dark transition-all">
-                    <span className="pl-3 pr-1 text-editorial-dark/40 flex items-center justify-center">
-                      <Search size={12} />
-                    </span>
-                    <input
-                      type="text"
-                      id="tracker-mapping-search-input"
-                      value={trackerSearchQuery}
-                      onChange={(e) => {
-                        setTrackerSearchQuery(e.target.value);
-                        setShowTrackerSearchDropdown(true);
-                      }}
-                      onFocus={() => setShowTrackerSearchDropdown(true)}
-                      placeholder="Search trackers for CSV..."
-                      className="bg-transparent border-0 py-2 pr-8 pl-1 text-xs font-sans placeholder-editorial-dark/35 outline-none w-44 md:w-52 shrink-0 rounded-none focus:ring-0 focus:outline-none"
-                    />
-                    {trackerSearchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTrackerSearchQuery('');
-                          setShowTrackerSearchDropdown(false);
-                        }}
-                        className="absolute right-2 text-editorial-dark/40 hover:text-editorial-orange p-1 flex items-center justify-center cursor-pointer transition-colors"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
-
-                  <AnimatePresence>
-                    {showTrackerSearchDropdown && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        transition={{ duration: 0.12 }}
-                        className="absolute right-0 bottom-full mb-3 z-50 w-72 bg-editorial-bg border border-editorial-dark/15 shadow-xl p-4 text-left font-sans select-none"
-                      >
-                        {/* Triangle decorator */}
-                        <div className="absolute right-24 top-full w-3 h-3 bg-editorial-bg border-r border-b border-editorial-dark/15 rotate-45 -translate-y-1.5" />
-
-                        <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-2 mb-2">
-                          <span className="font-serif font-semibold text-xs text-editorial-dark flex items-center gap-1.5">
-                            <Search size={12} className="text-editorial-orange" />
-                            Verify Tracker Names
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setShowTrackerSearchDropdown(false)}
-                            className="text-editorial-dark/40 hover:text-editorial-dark p-0.5 transition-colors cursor-pointer"
-                          >
-                            <X size={11} />
-                          </button>
-                        </div>
-
-                        <div className="max-h-48 overflow-y-auto space-y-1.5 pr-0.5 scrollbar-thin">
-                          {(() => {
-                            const filtered = trackers.filter(t => 
-                              t.name.toLowerCase().includes(trackerSearchQuery.toLowerCase()) ||
-                              (t.unit && t.unit.toLowerCase().includes(trackerSearchQuery.toLowerCase())) ||
-                              t.category.toLowerCase().includes(trackerSearchQuery.toLowerCase())
-                            );
-
-                            if (filtered.length === 0) {
-                              return (
-                                <p className="text-[10px] text-editorial-dark/50 italic py-2 text-center">
-                                  No matching active trackers found.
-                                </p>
-                              );
-                            }
-
-                            return filtered.map(t => {
-                              const isCopied = copiedTrackerName === t.name;
-                              return (
-                                <div
-                                  key={t.id}
-                                  onClick={() => handleCopyTrackerName(t.name)}
-                                  className="group flex items-center justify-between p-1.5 hover:bg-editorial-orange-light/5 border border-transparent hover:border-editorial-orange/15 cursor-pointer transition-all"
-                                  title="Click to copy exact tracker name"
-                                >
-                                  <div className="flex flex-col min-w-0 pr-2">
-                                    <span className="font-sans font-medium text-xs text-editorial-dark truncate">
-                                      {t.name}
-                                    </span>
-                                    <span className="font-mono text-[9px] text-editorial-dark/50 flex items-center gap-1">
-                                      <span className="capitalize">{t.category}</span>
-                                      {t.unit && <span>• {t.unit}</span>}
-                                    </span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="shrink-0 p-1 bg-editorial-dark/[0.02] border border-editorial-dark/10 text-editorial-dark/40 hover:text-editorial-orange hover:bg-white transition-all flex items-center justify-center"
-                                  >
-                                    {isCopied ? (
-                                      <Check size={11} className="text-emerald-600 font-bold" />
-                                    ) : (
-                                      <Copy size={11} className="opacity-60 group-hover:opacity-100 transition-opacity" />
-                                    )}
-                                  </button>
-                                </div>
-                              );
-                            });
-                          })()}
-                        </div>
-                        <p className="text-[9px] text-editorial-dark/40 mt-2.5 pt-1.5 border-t border-editorial-dark/5 leading-tight text-center">
-                          Click any tracker row to copy the exact name required by your CSV column formatting.
-                        </p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+            <div className="max-w-4xl mx-auto p-6 space-y-6">
+              {/* Header JSON Controls Row */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-editorial-dark/10 pb-4">
+                <div>
+                  <h4 className="font-serif font-semibold text-base text-editorial-dark flex items-center gap-1.5">
+                    <LucideIcon name="Settings" size={16} className="text-editorial-accent" />
+                    Data Backups & Recovery
+                  </h4>
+                  <p className="text-xs text-editorial-dark/70 mt-0.5 leading-relaxed">
+                    Preserve your statistics locally as physical backups or import existing logs.
+                  </p>
                 </div>
 
-                {/* CSV Row Filter Input */}
-                <div className="relative inline-flex items-center gap-1.5 shrink-0">
-                  <div className="relative flex items-center bg-editorial-bg border border-editorial-dark/20 hover:border-editorial-dark/45 focus-within:border-editorial-orange text-editorial-dark transition-all">
-                    <span className="pl-3 pr-1 text-editorial-dark/40 flex items-center justify-center">
-                      <Filter size={12} className="text-editorial-orange" />
-                    </span>
+                <div className="flex flex-wrap gap-2.5 items-center">
+                  <button
+                    type="button"
+                    onClick={handleExportData}
+                    className="flex items-center gap-1.5 bg-editorial-accent-light/50 hover:bg-editorial-accent-light/80 border border-editorial-dark/20 text-editorial-dark font-mono text-[10px] uppercase tracking-wider font-semibold px-3.5 py-2 transition-colors cursor-pointer"
+                  >
+                    <Download size={13} className="text-editorial-accent" />
+                    Export Backup (JSON)
+                  </button>
+
+                  <label className="flex items-center gap-1.5 bg-editorial-bg hover:bg-editorial-accent-light/40 border border-editorial-dark/20 text-editorial-dark font-mono text-[10px] uppercase tracking-wider font-semibold px-3.5 py-2 transition-colors cursor-pointer">
+                    <Upload size={13} className="text-editorial-accent" />
+                    Restore Backup (JSON)
                     <input
-                      type="text"
-                      id="csv-row-filter-input"
-                      value={csvRowFilterQuery}
-                      onChange={(e) => setCsvRowFilterQuery(e.target.value)}
-                      placeholder="Filter CSV rows..."
-                      className="bg-transparent border-0 py-2 pr-8 pl-1 text-xs font-sans placeholder-editorial-dark/35 outline-none w-44 md:w-52 shrink-0 rounded-none focus:ring-0 focus:outline-none"
-                      title="Optionally filter CSV rows by keyword (e.g. tracker name, category, etc.) before importing"
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportFile}
+                      className="hidden"
                     />
-                    {csvRowFilterQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setCsvRowFilterQuery('')}
-                        className="absolute right-2 text-editorial-dark/40 hover:text-editorial-orange p-1 flex items-center justify-center cursor-pointer transition-colors"
-                        title="Clear filter query"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  </label>
 
-                 {/* Import CSV Logs Button & Format Helper Wrapper */}
-                <div className="relative inline-flex items-center gap-1.5 shrink-0">
-                  {selectedCSVFileName ? (
-                    <div
-                      id="import-csv-logs-button"
-                      className="relative flex items-center gap-2.5 border border-editorial-orange/20 bg-editorial-orange-light/5 px-3 py-1.5"
-                    >
-                      <div className="flex items-center gap-1 text-editorial-dark max-w-[130px] md:max-w-[160px] truncate" title={selectedCSVFileName}>
-                        <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                        <span className="font-mono text-[11px] truncate font-semibold">{selectedCSVFileName}</span>
-                      </div>
-
-                      {/* Preview Data Button */}
-                      <button
-                        type="button"
-                        id="preview-csv-data-button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setIsPreviewModalOpen(true);
-                        }}
-                        className="flex items-center gap-1 bg-editorial-orange-light/25 hover:bg-editorial-orange-light/40 text-editorial-orange border border-editorial-orange/25 px-2.5 py-1 text-[11px] font-mono uppercase font-bold tracking-wider transition-colors cursor-pointer"
-                        title="Preview first 5 rows of selected CSV"
-                      >
-                        <Eye size={12} />
-                        <span>Preview Data</span>
-                      </button>
-
-                      {/* Map & Import Button */}
-                      <button
-                        type="button"
-                        id="open-mapping-modal-button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setIsCSVMappingModalOpen(true);
-                        }}
-                        className="flex items-center gap-1 bg-editorial-orange hover:bg-editorial-orange/90 text-white border border-editorial-orange px-2.5 py-1 text-[11px] font-mono uppercase font-bold tracking-wider transition-colors cursor-pointer"
-                        title="Map CSV columns and import data"
-                      >
-                        <Upload size={12} />
-                        <span>Map & Import</span>
-                      </button>
-
-                      {/* Clear selection Button */}
-                      <button
-                        type="button"
-                        id="clear-selected-csv-button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSelectedCSVFileName(null);
-                          setPendingCSVText('');
-                          setPendingCSVHeaders([]);
-                        }}
-                        className="p-1 hover:bg-rose-500/10 hover:text-rose-600 text-editorial-dark/40 cursor-pointer transition-colors"
-                        title="Clear selected file"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ) : (
-                    <label
-                      id="import-csv-logs-button"
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      className={`relative flex items-center gap-1.5 font-semibold px-4 py-2 rounded-none text-xs transition-all cursor-pointer select-none border ${
-                        isDraggingCSV
-                          ? 'bg-editorial-orange border-editorial-orange text-white scale-105 shadow-md'
-                          : csvImportStatus === 'success'
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
-                          : csvImportStatus === 'error'
-                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-700'
-                          : csvImportStatus === 'warning'
-                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-700'
-                          : 'bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border-editorial-orange/20 text-editorial-orange'
-                      }`}
-                      title={csvImportStatus ? csvImportMessage : "Bulk-populate logs from an external CSV file (drag & drop supported)"}
-                    >
-                      <>
-                        {csvImportStatus === 'success' ? (
-                          <CheckCircle2 size={14} className="text-emerald-600" />
-                        ) : csvImportStatus === 'error' ? (
-                          <X size={14} className="text-rose-600" />
-                        ) : csvImportStatus === 'warning' ? (
-                          <AlertTriangle size={14} className="text-amber-600" />
-                        ) : (
-                          <Upload size={14} className="text-editorial-orange" />
-                        )}
-                        {csvImportStatus === 'success' ? (
-                          <span>Import Success!</span>
-                        ) : csvImportStatus === 'error' ? (
-                          <span>Import Error!</span>
-                        ) : csvImportStatus === 'warning' ? (
-                          <span>Invalid File!</span>
-                        ) : (
-                          <span>Import CSV Logs</span>
-                        )}
-                      </>
-                      <input
-                        type="file"
-                        accept=".csv"
-                        onChange={handleImportCSVFile}
-                        className="hidden"
-                      />
-                      
-                      {/* Visual Overlay for Drag & Drop Action */}
-                      <AnimatePresence>
-                        {isDraggingCSV && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute inset-0 z-20 bg-editorial-orange text-white flex items-center justify-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-center px-4 py-2 border border-dashed border-white pointer-events-none"
-                          >
-                            <Upload size={13} className="animate-bounce" />
-                            <span>Drag & Drop File Here</span>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* Transparent drag cover to prevent child elements from intercepting drag events and causing flicker */}
-                      {isDraggingCSV && (
-                        <div className="absolute inset-0 z-10 pointer-events-none" />
-                      )}
-                    </label>
-                  )}
-
-                  {/* Export CSV Button */}
                   {logs.length > 0 && (
                     <button
                       type="button"
-                      id="export-csv-button-import-area"
-                      onClick={handleExportVisibleCSV}
-                      className="flex items-center gap-1.5 bg-editorial-orange-light/10 hover:bg-editorial-orange-light/25 border border-editorial-orange/20 text-editorial-orange font-semibold px-4 py-2 rounded-none text-xs transition-all cursor-pointer select-none"
-                      title="Download currently visible logs as a formatted CSV file"
+                      onClick={handleExportCSV}
+                      className="flex items-center gap-1.5 bg-editorial-orange-light/10 hover:bg-editorial-orange-light/20 border border-editorial-orange/20 text-editorial-orange font-mono text-[10px] uppercase tracking-wider font-semibold px-3.5 py-2 transition-colors cursor-pointer"
                     >
-                      <Download size={14} className="text-editorial-orange" />
-                      <span>Export CSV</span>
+                      <Download size={13} />
+                      Export Logs (CSV)
                     </button>
                   )}
 
-                  {/* Batch Delete / Revert Imported Logs Button */}
-                  <AnimatePresence>
-                    {lastImportedLogIds.length > 0 && (
-                      <motion.button
-                        type="button"
-                        initial={{ opacity: 0, scale: 0.95, x: -5 }}
-                        animate={{ opacity: 1, scale: 1, x: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, x: -5 }}
-                        onClick={handleRevertLastCSVImport}
-                        className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-700 hover:text-rose-800 px-3 py-2 text-xs font-mono uppercase tracking-wider font-semibold transition-all cursor-pointer"
-                        title={`Delete the ${lastImportedLogIds.length} logs from your most recent CSV import`}
-                      >
-                        <Trash2 size={13} className="text-rose-600" />
-                        <span>Revert Import ({lastImportedLogIds.length})</span>
-                      </motion.button>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Clear All Logs Button */}
-                  <AnimatePresence>
-                    {logs.length > 0 && (
-                      <motion.button
-                        id="clear-all-logs-button"
-                        type="button"
-                        initial={{ opacity: 0, scale: 0.95, x: -5 }}
-                        animate={{ opacity: 1, scale: 1, x: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, x: -5 }}
-                        onClick={() => setIsClearLogsConfirmOpen(true)}
-                        className="flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-700 hover:text-rose-800 px-3 py-2 text-xs font-mono uppercase tracking-wider font-semibold transition-all cursor-pointer"
-                        title="Delete all log entries across all trackers"
-                      >
-                        <Trash2 size={13} className="text-rose-600" />
-                        <span>Clear All Logs</span>
-                      </motion.button>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Persistent Quick Guide Badge with Hover Tooltip */}
-                  <div className="relative group inline-flex items-center">
-                    <div 
-                      className="flex items-center gap-1.5 bg-editorial-accent-light/20 hover:bg-editorial-accent-light/35 border border-editorial-dark/15 px-3 py-2 text-[10px] font-mono uppercase tracking-wider font-semibold text-editorial-dark/75 hover:text-editorial-dark transition-all cursor-help select-none"
-                    >
-                      <HelpCircle size={11} className="text-editorial-orange" />
-                      <span>Quick Guide</span>
-                    </div>
-                    {/* Tooltip */}
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 hidden group-hover:block z-[60] w-64 bg-editorial-dark text-white text-[10px] p-3 font-sans leading-normal rounded-none shadow-xl pointer-events-none normal-case">
-                      <div className="font-semibold text-editorial-orange mb-1.5 uppercase tracking-wider font-mono text-[9px]">CSV Header Requirement</div>
-                      <p className="mb-2 text-white/90 font-serif leading-normal">
-                        To avoid drag-and-drop or upload errors, ensure your CSV file includes these headers:
-                      </p>
-                      <div className="space-y-1 bg-white/5 p-2 border border-white/10 font-mono text-[9px] text-white">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 bg-editorial-orange" />
-                          <span><strong className="text-editorial-orange font-bold">Date</strong> <span className="text-white/60 text-[8px]">(e.g. YYYY-MM-DD)</span></span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 bg-editorial-orange" />
-                          <span><strong className="text-editorial-orange font-bold">Tracker Name</strong></span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 bg-editorial-orange" />
-                          <span><strong className="text-editorial-orange font-bold">Value</strong> <span className="text-white/60 text-[8px]">(numerical log value)</span></span>
-                        </div>
-                      </div>
-                      <p className="mt-2 text-white/75 leading-relaxed font-sans">
-                        Don't worry if your columns are named differently—our smart Column Mapper will automatically open to help you align them!
-                      </p>
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-editorial-dark rotate-45 -translate-y-1" />
-                    </div>
-                  </div>
-
-                  {/* CSV Help Popover Toggle */}
                   <button
                     type="button"
-                    id="csv-format-help-button"
-                    onClick={() => setShowCSVHelpPopover(!showCSVHelpPopover)}
-                    className={`flex items-center justify-center w-8 h-8 border transition-all cursor-pointer ${
-                      showCSVHelpPopover
-                        ? 'bg-editorial-orange border-editorial-orange text-white'
-                        : 'bg-editorial-orange-light/5 hover:bg-editorial-orange-light/15 border-editorial-orange/20 text-editorial-orange'
-                    }`}
-                    title="Expected CSV Column Format Help"
+                    onClick={() => setIsBackupSectionOpen(false)}
+                    className="p-1.5 text-editorial-dark/40 hover:text-editorial-dark hover:bg-editorial-accent-light transition-colors rounded-none cursor-pointer"
+                    title="Close backup panel"
                   >
-                    <Info size={14} />
+                    <X size={16} />
                   </button>
+                </div>
+              </div>
 
-                  <AnimatePresence>
-                    {csvImportStatus && (
-                      <motion.span
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        className={`absolute left-0 top-full mt-1.5 z-10 text-[10px] font-mono px-2 py-1 shadow-sm border ${
-                          csvImportStatus === 'success'
-                            ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
-                            : csvImportStatus === 'warning'
-                            ? 'text-amber-900 bg-amber-50 border-amber-200'
-                            : 'text-rose-800 bg-rose-50 border-rose-200'
-                        }`}
-                      >
-                        {csvImportMessage}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
+              {/* CSV Data Integration Center */}
+              <div className="bg-white border border-editorial-dark/15 p-5 space-y-5 rounded-none shadow-sm relative text-sm">
+                {/* Section Header */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-editorial-dark/10 pb-4">
+                  <div>
+                    <h5 className="font-serif font-medium text-sm text-editorial-dark flex items-center gap-2">
+                      <div className="p-1.5 bg-editorial-orange-light/10 text-editorial-orange">
+                        <Sliders size={14} />
+                      </div>
+                      CSV Spreadsheet Integration Center
+                    </h5>
+                    <p className="text-[10px] text-editorial-dark/50 mt-0.5 font-sans">
+                      Multi-step spreadsheet mapper, validator, and entry importer
+                    </p>
+                  </div>
 
-                  <AnimatePresence>
-                    {showCSVHelpPopover && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute right-0 bottom-full mb-3 z-50 w-80 bg-editorial-bg border border-editorial-dark/15 shadow-xl p-5 text-left font-sans select-none"
-                      >
-                        {/* Triangle decorator */}
-                        <div className="absolute right-2.5 top-full w-3 h-3 bg-editorial-bg border-r border-b border-editorial-dark/15 rotate-45 -translate-y-1.5" />
-                        
-                        <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-2 mb-3">
-                          <span className="font-serif font-semibold text-xs text-editorial-dark flex items-center gap-1.5">
-                            <Info size={13} className="text-editorial-orange animate-pulse" />
-                            Expected CSV Format
-                          </span>
+                  {/* Top Right Tool Bar */}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* CSV Filter Rows input */}
+                    <div className="relative flex items-center bg-editorial-bg border border-editorial-dark/15 focus-within:border-editorial-orange text-editorial-dark transition-all">
+                      <span className="pl-2.5 pr-1 text-editorial-dark/40 flex items-center justify-center">
+                        <Filter size={11} className="text-editorial-orange" />
+                      </span>
+                      <input
+                        type="text"
+                        value={csvRowFilterQuery}
+                        onChange={(e) => setCsvRowFilterQuery(e.target.value)}
+                        placeholder="Keyword row filter..."
+                        className="bg-transparent border-0 py-1.5 pr-6 pl-1 text-[10px] font-sans placeholder-editorial-dark/35 outline-none w-36 shrink-0 rounded-none focus:ring-0 focus:outline-none"
+                        title="Optionally filter rows by keyword before importing"
+                      />
+                      {csvRowFilterQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setCsvRowFilterQuery('')}
+                          className="absolute right-1.5 text-editorial-dark/40 hover:text-editorial-orange p-0.5 flex items-center justify-center cursor-pointer transition-colors"
+                        >
+                          <X size={10} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Tracker Search Dropdown */}
+                    <div className="relative inline-flex items-center">
+                      <div className="relative flex items-center bg-editorial-bg border border-editorial-dark/15 focus-within:border-editorial-orange text-editorial-dark transition-all">
+                        <span className="pl-2.5 pr-1 text-editorial-dark/40 flex items-center justify-center">
+                          <Search size={11} />
+                        </span>
+                        <input
+                          type="text"
+                          value={trackerSearchQuery}
+                          onChange={(e) => {
+                            setTrackerSearchQuery(e.target.value);
+                            setShowTrackerSearchDropdown(true);
+                          }}
+                          onFocus={() => setShowTrackerSearchDropdown(true)}
+                          placeholder="Verify Tracker names..."
+                          className="bg-transparent border-0 py-1.5 pr-6 pl-1 text-[10px] font-sans placeholder-editorial-dark/35 outline-none w-36 shrink-0 rounded-none focus:ring-0 focus:outline-none"
+                        />
+                        {trackerSearchQuery && (
                           <button
                             type="button"
-                            onClick={() => setShowCSVHelpPopover(false)}
-                            className="text-editorial-dark/40 hover:text-editorial-dark p-0.5 transition-colors cursor-pointer"
+                            onClick={() => {
+                              setTrackerSearchQuery('');
+                              setShowTrackerSearchDropdown(false);
+                            }}
+                            className="absolute right-1.5 text-editorial-dark/40 hover:text-editorial-orange p-0.5 flex items-center justify-center cursor-pointer transition-colors"
                           >
-                            <X size={12} />
+                            <X size={10} />
                           </button>
-                        </div>
+                        )}
+                      </div>
 
-                        <p className="text-[11px] text-editorial-dark/75 leading-relaxed mb-3">
-                          To successfully import bulk entries, your spreadsheet/CSV file must include the following column headers:
-                        </p>
+                      <AnimatePresence>
+                        {showTrackerSearchDropdown && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                            transition={{ duration: 0.12 }}
+                            className="absolute right-0 top-full mt-2.5 z-50 w-64 bg-editorial-bg border border-editorial-dark/15 shadow-xl p-3.5 text-left font-sans select-none"
+                          >
+                            <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-1.5 mb-1.5">
+                              <span className="font-serif font-semibold text-[10px] text-editorial-dark flex items-center gap-1">
+                                <Search size={11} className="text-editorial-orange" />
+                                Exact Tracker Names
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setShowTrackerSearchDropdown(false)}
+                                className="text-editorial-dark/40 hover:text-editorial-dark p-0.5 transition-colors cursor-pointer"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
 
-                        <div className="space-y-2 mb-3">
-                          <div className="flex items-center gap-1.5 text-[11px] relative overflow-visible">
-                            <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark text-[10px]">Date</span>
-                            <div className="group relative inline-flex items-center">
-                              <HelpCircle size={11} className="text-editorial-dark/40 hover:text-editorial-orange cursor-help transition-colors" />
-                              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-[60] w-64 bg-editorial-dark text-white text-[10px] p-2.5 font-sans leading-normal rounded-none shadow-xl pointer-events-none normal-case">
-                                <div className="font-semibold text-editorial-orange mb-1">Date Examples:</div>
-                                Supports formats like <span className="font-mono text-white/90 font-semibold">2026-07-09</span> (YYYY-MM-DD), <span className="font-mono text-white/90 font-semibold">07/09/2026</span> (MM/DD/YYYY), or <span className="font-mono text-white/90 font-semibold">2026-07-09 14:30</span>.
-                                <div className="absolute top-full left-2 w-2 h-2 bg-editorial-dark rotate-45 -translate-y-1" />
-                              </div>
+                            <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5 scrollbar-thin">
+                              {(() => {
+                                const filtered = trackers.filter(t => 
+                                  t.name.toLowerCase().includes(trackerSearchQuery.toLowerCase()) ||
+                                  (t.unit && t.unit.toLowerCase().includes(trackerSearchQuery.toLowerCase())) ||
+                                  t.category.toLowerCase().includes(trackerSearchQuery.toLowerCase())
+                                );
+
+                                if (filtered.length === 0) {
+                                  return (
+                                    <p className="text-[9px] text-editorial-dark/50 italic py-1.5 text-center">
+                                      No matching trackers found.
+                                    </p>
+                                  );
+                                }
+
+                                return filtered.map(t => {
+                                  const isCopied = copiedTrackerName === t.name;
+                                  return (
+                                    <div
+                                      key={t.id}
+                                      onClick={() => handleCopyTrackerName(t.name)}
+                                      className="group flex items-center justify-between p-1 hover:bg-editorial-orange-light/5 border border-transparent hover:border-editorial-orange/15 cursor-pointer transition-all"
+                                      title="Click to copy exact tracker name"
+                                    >
+                                      <div className="flex flex-col min-w-0 pr-2">
+                                        <span className="font-sans font-medium text-[10px] text-editorial-dark truncate">
+                                          {t.name}
+                                        </span>
+                                        <span className="font-mono text-[8px] text-editorial-dark/40">
+                                          {t.category} {t.unit && `• ${t.unit}`}
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="shrink-0 p-0.5 bg-editorial-dark/[0.02] border border-editorial-dark/10 text-editorial-dark/40 hover:text-editorial-orange hover:bg-white transition-all flex items-center justify-center"
+                                      >
+                                        {isCopied ? (
+                                          <Check size={9} className="text-emerald-600 font-bold" />
+                                        ) : (
+                                          <Copy size={9} />
+                                        )}
+                                      </button>
+                                    </div>
+                                  );
+                                });
+                              })()}
                             </div>
-                            <span className="text-editorial-dark/65">— Log day <span className="font-mono text-[9px]">(YYYY-MM-DD)</span></span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-[11px] relative overflow-visible">
-                            <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark text-[10px]">Tracker Name</span>
-                            <div className="group relative inline-flex items-center">
-                              <HelpCircle size={11} className="text-editorial-dark/40 hover:text-editorial-orange cursor-help transition-colors" />
-                              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-[60] w-64 bg-editorial-dark text-white text-[10px] p-2.5 font-sans leading-normal rounded-none shadow-xl pointer-events-none normal-case">
-                                <div className="font-semibold text-editorial-orange mb-1">Tracker Name Example:</div>
-                                Must exactly match your active trackers. For example, use <span className="font-mono text-white/90 font-semibold">"Water Intake"</span> or <span className="font-mono text-white/90 font-semibold">"Meditation"</span>. Case-insensitive when smart format scan is active.
-                                <div className="absolute top-full left-2 w-2 h-2 bg-editorial-dark rotate-45 -translate-y-1" />
-                              </div>
-                            </div>
-                            <span className="text-editorial-dark/65">— Name of tracker</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 text-[11px] relative overflow-visible">
-                            <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark text-[10px]">Value</span>
-                            <div className="group relative inline-flex items-center">
-                              <HelpCircle size={11} className="text-editorial-dark/40 hover:text-editorial-orange cursor-help transition-colors" />
-                              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-[60] w-64 bg-editorial-dark text-white text-[10px] p-2.5 font-sans leading-normal rounded-none shadow-xl pointer-events-none normal-case">
-                                <div className="font-semibold text-editorial-orange mb-1">Value Examples by Tracker Type:</div>
-                                <ul className="space-y-1 list-disc list-inside">
-                                  <li><span className="font-serif">Hydration</span>: <span className="font-mono text-white/90 font-semibold">8</span> (cups) or <span className="font-mono text-white/90 font-semibold">250</span> (ml)</li>
-                                  <li><span className="font-serif">Sleep Quality</span>: <span className="font-mono text-white/90 font-semibold">7.5</span> (hours)</li>
-                                  <li><span className="font-serif">Meditation</span>: <span className="font-mono text-white/90 font-semibold">15</span> (minutes)</li>
-                                  <li><span className="font-serif">Mood Index</span>: <span className="font-mono text-white/90 font-semibold">4</span> (scale of 1 to 5)</li>
-                                </ul>
-                                <div className="absolute top-full left-2 w-2 h-2 bg-editorial-dark rotate-45 -translate-y-1" />
-                              </div>
-                            </div>
-                            <span className="text-editorial-dark/65">— Numerical log entry value</span>
-                          </div>
-                          <div className="pt-1.5 border-t border-editorial-dark/5">
-                            <span className="text-[9px] font-mono text-editorial-orange/80 uppercase font-bold tracking-wider">Optional Columns:</span>
-                            <p className="text-[10px] text-editorial-dark/50 leading-tight mt-0.5">
-                              Category, Unit, Goal, Notes, Logged At
+                            <p className="text-[8px] text-editorial-dark/45 mt-1.5 pt-1 border-t border-editorial-dark/5 leading-tight">
+                              Click any tracker to copy the exact name needed by the CSV.
                             </p>
-                          </div>
-                        </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
 
-                        <div className="relative group">
-                          <div className="bg-editorial-dark/[0.03] border border-editorial-dark/10 p-2 pr-10 font-mono text-[9px] text-editorial-dark/70 rounded-none leading-relaxed overflow-x-auto whitespace-pre">
-                            {"Date,Tracker Name,Value,Notes\n2026-07-09,Water Intake,8,Target met!\n2026-07-09,Meditation,15,Focused session"}
-                          </div>
-                          <button
-                            type="button"
-                            id="copy-csv-example-button"
-                            onClick={handleCopyCSVExample}
-                            className="absolute top-1.5 right-1.5 p-1 bg-editorial-bg hover:bg-editorial-orange-light/10 border border-editorial-dark/15 text-editorial-dark/60 hover:text-editorial-orange transition-colors cursor-pointer rounded-none flex items-center justify-center"
-                            title="Copy example text to clipboard"
-                          >
-                            {copiedCSVExample ? (
-                              <Check size={11} className="text-emerald-600" />
-                            ) : (
-                              <Copy size={11} />
-                            )}
-                          </button>
+                    {/* CSV Help Popover Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setShowCSVHelpPopover(!showCSVHelpPopover)}
+                      className={`flex items-center justify-center w-7 h-7 border transition-all cursor-pointer ${
+                        showCSVHelpPopover
+                          ? 'bg-editorial-orange border-editorial-orange text-white'
+                          : 'bg-editorial-orange-light/5 hover:bg-editorial-orange-light/15 border-editorial-orange/20 text-editorial-orange'
+                      }`}
+                      title="Expected CSV Column Format Help"
+                    >
+                      <Info size={13} />
+                    </button>
+
+                    {/* Download Sample Template */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadCSVTemplate}
+                      className="flex items-center gap-1 border border-editorial-dark/15 hover:border-editorial-orange hover:text-editorial-orange px-2.5 py-1.5 font-mono text-[10px] uppercase font-semibold transition-colors cursor-pointer bg-editorial-bg"
+                      title="Download starter CSV template"
+                    >
+                      <Download size={11} />
+                      <span>Template</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* CSV Format Help Popover */}
+                <AnimatePresence>
+                  {showCSVHelpPopover && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.15 }}
+                      className="bg-editorial-dark/[0.01] border border-editorial-orange/20 p-4 font-sans text-xs"
+                    >
+                      <div className="flex items-center justify-between border-b border-editorial-dark/10 pb-1.5 mb-3">
+                        <span className="font-serif font-semibold text-xs text-editorial-dark flex items-center gap-1.5">
+                          <Info size={13} className="text-editorial-orange animate-pulse" />
+                          Expected CSV Column Format & Rules
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowCSVHelpPopover(false)}
+                          className="text-editorial-dark/40 hover:text-editorial-dark"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-editorial-dark/75 leading-relaxed mb-3">
+                        To successfully import entries, your CSV file should contain columns that map to the following fields:
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3 text-[11px]">
+                        <div className="bg-white border border-editorial-dark/10 p-2.5">
+                          <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark">Date</span>
+                          <p className="text-editorial-dark/65 mt-1">Supports standard days, e.g. <span className="font-mono font-semibold">2026-07-09</span> or <span className="font-mono font-semibold">07/09/2026</span>.</p>
                         </div>
+                        <div className="bg-white border border-editorial-dark/10 p-2.5">
+                          <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark">Tracker Name</span>
+                          <p className="text-editorial-dark/65 mt-1">Must align with your active metrics, e.g. <span className="font-mono font-semibold">"Water Intake"</span>.</p>
+                        </div>
+                        <div className="bg-white border border-editorial-dark/10 p-2.5">
+                          <span className="font-mono bg-editorial-dark/5 px-1 py-0.5 font-bold text-editorial-dark">Value</span>
+                          <p className="text-editorial-dark/65 mt-1">The numerical log record value, e.g. <span className="font-mono font-semibold">8</span> or <span className="font-mono font-semibold">15</span>.</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-editorial-dark/5">
+                        <div className="text-[10px] text-editorial-dark/50">
+                          Optional headers: Category, Unit, Goal, Notes, Logged At
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleCopyCSVExample}
+                          className="flex items-center gap-1 text-[10px] font-mono text-editorial-orange font-bold hover:underline"
+                        >
+                          {copiedCSVExample ? (
+                            <>
+                              <Check size={11} className="text-emerald-600" />
+                              <span>Copied Example!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={11} />
+                              <span>Copy CSV Format Text</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* GRAPHICAL FILE DROP & INPUT HELPER */}
+                <div 
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`group relative border-2 border-dashed p-7 text-center cursor-pointer transition-all rounded-none ${
+                    isDraggingCSV 
+                      ? 'border-editorial-orange bg-editorial-orange-light/10 scale-[1.01]' 
+                      : selectedCSVFileName 
+                        ? 'border-emerald-500/25 bg-emerald-500/[0.01]' 
+                        : 'border-editorial-dark/15 hover:border-editorial-orange bg-editorial-dark/[0.01] hover:bg-editorial-orange-light/[0.01]'
+                  }`}
+                >
+                  <label htmlFor="csv-file-uploader-input" className="absolute inset-0 cursor-pointer w-full h-full">
+                    <input 
+                      id="csv-file-uploader-input"
+                      type="file"
+                      accept=".csv"
+                      onChange={handleImportCSVFile}
+                      className="hidden"
+                    />
+                  </label>
+                  
+                  {selectedCSVFileName ? (
+                    <div className="relative z-10 flex flex-col items-center justify-center space-y-2.5">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                        <CheckCircle2 size={18} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-mono font-bold text-editorial-dark">{selectedCSVFileName}</p>
+                        <p className="text-[10px] text-editorial-dark/55 mt-0.5">
+                          Spreadsheet loaded • <strong className="text-editorial-dark">{totalParsedRows}</strong> rows successfully detected
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsPreviewModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 text-[9px] font-mono uppercase bg-editorial-accent-light text-editorial-dark hover:bg-editorial-accent border border-editorial-dark/10 transition-colors cursor-pointer"
+                        >
+                          Preview Layout
+                        </button>
+                        
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsCSVMappingModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 text-[9px] font-mono uppercase bg-editorial-orange text-white hover:bg-editorial-orange/90 transition-colors cursor-pointer"
+                        >
+                          Adjust Mapping & Import
+                        </button>
 
                         <button
                           type="button"
-                          id="download-csv-template-button"
-                          onClick={handleDownloadCSVTemplate}
-                          className="mt-3.5 w-full flex items-center justify-center gap-2 bg-editorial-orange text-white hover:bg-editorial-orange/90 font-semibold py-2 rounded-none text-xs transition-colors cursor-pointer"
-                          title="Download a starter CSV file with sample logs and correct headers"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedCSVFileName(null);
+                            setPendingCSVText('');
+                            setPendingCSVHeaders([]);
+                            setCsvImportStep('idle');
+                          }}
+                          className="px-2 py-1 text-[9px] font-mono uppercase bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 border border-rose-500/20 transition-colors cursor-pointer"
                         >
-                          <Download size={13} />
-                          Download Sample Template (.csv)
+                          Remove File
                         </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative z-10 flex flex-col items-center justify-center space-y-2 py-1 pointer-events-none">
+                      <div className="w-10 h-10 rounded-full bg-editorial-orange-light/10 text-editorial-orange flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Upload size={18} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-serif font-semibold text-editorial-dark">Drag and drop your spreadsheet file (.csv) here</p>
+                        <p className="text-[10px] text-editorial-dark/50 mt-0.5">or click to browse from your computer</p>
+                      </div>
+                      <p className="text-[9px] font-mono text-editorial-dark/40 max-w-sm mt-1 leading-normal">
+                        Supports custom logs, Apple Health, Google Fit, Habitica, or CSV templates.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Visual Drop Overlay */}
+                  <AnimatePresence>
+                    {isDraggingCSV && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 z-20 bg-editorial-orange text-white flex flex-col items-center justify-center gap-1 font-mono text-[10px] uppercase tracking-wider"
+                      >
+                        <Upload size={20} className="animate-bounce mb-1" />
+                        <span>Release to drop spreadsheet file</span>
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
 
-                {/* Import File Button */}
-                <label className="flex items-center gap-1.5 bg-editorial-bg hover:bg-editorial-accent-light border border-editorial-dark/20 text-editorial-dark font-semibold px-4 py-2 rounded-none text-xs transition-colors cursor-pointer">
-                  <Upload size={14} className="text-editorial-accent" />
-                  Import Backup File
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleImportFile}
-                    className="hidden"
-                  />
-                </label>
+                {/* GRAPHICAL PIPELINE PROGRESS BAR */}
+                <div className="bg-editorial-dark/[0.015] border border-editorial-dark/5 p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-mono text-editorial-accent uppercase tracking-wider font-bold">
+                      Import Pipeline Status
+                    </span>
+                    <span className="text-xs font-serif font-bold text-editorial-dark">
+                      {overallPercentage}% Complete
+                    </span>
+                  </div>
 
-                {/* Close backup action */}
-                <button
-                  type="button"
-                  onClick={() => setIsBackupSectionOpen(false)}
-                  className="p-2 text-editorial-dark/50 hover:text-editorial-dark hover:bg-editorial-accent-light rounded-none"
-                >
-                  <X size={16} />
-                </button>
+                  {/* Bar */}
+                  <div className="w-full bg-editorial-dark/5 h-2 overflow-hidden rounded-none relative">
+                    <motion.div 
+                      className="h-full bg-gradient-to-r from-editorial-orange to-emerald-500"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${overallPercentage}%` }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                    />
+                  </div>
+
+                  {/* Step Columns Checkpoints */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1 text-xs">
+                    {/* Step 1: Upload */}
+                    <div className={`p-3 border transition-all ${
+                      selectedCSVFileName 
+                        ? 'border-emerald-500/15 bg-emerald-500/[0.015] text-emerald-800' 
+                        : 'border-editorial-dark/10 text-editorial-dark/50'
+                    }`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-mono text-[9px] uppercase tracking-wider font-bold">1. Spreadsheet Upload</span>
+                        {selectedCSVFileName ? (
+                          <Check size={12} className="text-emerald-600 font-bold" />
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full bg-editorial-dark/25 animate-pulse" />
+                        )}
+                      </div>
+                      <p className="text-[10.5px] leading-snug font-serif">
+                        {selectedCSVFileName ? 'Spreadsheet uploaded successfully' : 'Waiting for file upload...'}
+                      </p>
+                    </div>
+
+                    {/* Step 2: Columns Mapping */}
+                    <div className={`p-3 border transition-all ${
+                      selectedCSVFileName 
+                        ? mappedColumnsCount === 3
+                          ? 'border-emerald-500/15 bg-emerald-500/[0.015] text-emerald-800'
+                          : 'border-editorial-orange/15 bg-editorial-orange-light/[0.015] text-editorial-orange'
+                        : 'border-editorial-dark/10 text-editorial-dark/50'
+                    }`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-mono text-[9px] uppercase tracking-wider font-bold">2. Columns Alignment</span>
+                        {mappedColumnsCount === 3 ? (
+                          <Check size={12} className="text-emerald-600 font-bold" />
+                        ) : selectedCSVFileName ? (
+                          <span className="text-[9px] font-mono font-bold animate-pulse">
+                            {Math.round((mappedColumnsCount / 3) * 100)}%
+                          </span>
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full bg-editorial-dark/25" />
+                        )}
+                      </div>
+                      <p className="text-[10.5px] leading-snug font-serif">
+                        {selectedCSVFileName 
+                          ? `Mapped ${mappedColumnsCount} of 3 required headers` 
+                          : 'Columns alignment pending...'}
+                      </p>
+                    </div>
+
+                    {/* Step 3: Success Status */}
+                    <div className={`p-3 border transition-all ${
+                      csvImportStep === 'success' 
+                        ? 'border-emerald-500/15 bg-emerald-500/[0.015] text-emerald-800' 
+                        : isSimulatingImport
+                          ? 'border-editorial-orange/15 bg-editorial-orange-light/[0.015] text-editorial-orange font-semibold'
+                          : 'border-editorial-dark/10 text-editorial-dark/50'
+                    }`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-mono text-[9px] uppercase tracking-wider font-bold">3. Logs Processing</span>
+                        {csvImportStep === 'success' ? (
+                          <Check size={12} className="text-emerald-600 font-bold" />
+                        ) : isSimulatingImport ? (
+                          <span className="text-[9px] font-mono animate-spin">⏳</span>
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full bg-editorial-dark/25" />
+                        )}
+                      </div>
+                      <p className="text-[10.5px] leading-snug font-serif">
+                        {csvImportStep === 'success' 
+                          ? `Imported ${importedLogsCount} of ${totalParsedRows} parsed rows (100% complete)` 
+                          : isSimulatingImport
+                            ? `Importing rows: ${importedProgressPercentage}% complete...`
+                            : 'Log entry sync pending...'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Revert last import overlay actions */}
+                <AnimatePresence>
+                  {lastImportedLogIds.length > 0 && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 5 }}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-rose-50 border border-rose-200/55 p-3.5"
+                    >
+                      <div className="text-xs text-rose-800 font-sans italic flex items-center gap-1.5">
+                        <span>⚠️ Loaded <strong>{lastImportedLogIds.length}</strong> entries in the most recent CSV import step. Feel free to revert.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRevertLastCSVImport}
+                        className="mt-2 sm:mt-0 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-mono text-[9px] uppercase font-bold tracking-wider transition-colors cursor-pointer rounded-none self-end sm:self-auto flex items-center gap-1"
+                      >
+                        <Trash2 size={11} />
+                        Revert Import ({lastImportedLogIds.length})
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </motion.div>
