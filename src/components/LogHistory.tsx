@@ -15,7 +15,8 @@ import {
   Check,
   Calendar,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -148,14 +149,90 @@ export function LogHistory({
     });
   };
 
+  // Helper to escape CSV fields
+  const escapeCSV = (val: unknown) => {
+    if (val === undefined || val === null) return '';
+    const str = String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const handleExportCSV = (dataToExport: LogEntry[], filename: string) => {
+    const headers = ['Log ID', 'Tracker ID', 'Tracker Name', 'Category', 'Date', 'Value', 'Unit', 'Note', 'Timestamp'];
+    const rows = dataToExport.map(log => {
+      const tracker = trackers.find(t => t.id === log.trackerId);
+      const isBoolean = tracker?.type === 'boolean';
+      return [
+        log.id,
+        log.trackerId,
+        tracker ? tracker.name : 'Unknown Tracker',
+        tracker ? tracker.category : '',
+        log.date,
+        isBoolean ? (log.value === 1 ? 'Yes' : 'No') : log.value,
+        (tracker && tracker.type !== 'boolean') ? (tracker.unit || '') : '',
+        log.note || '',
+        log.timestamp || ''
+      ];
+    });
+
+    const csvContent = [
+      headers.map(escapeCSV).join(','),
+      ...rows.map(row => row.map(escapeCSV).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
       {/* Search and Filters panel */}
       <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 space-y-4">
-        <h3 className="font-serif font-medium text-lg text-editorial-dark flex items-center gap-2">
-          <Filter size={16} className="text-editorial-accent" />
-          Filter History Logs
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-editorial-dark/10 pb-3">
+          <h3 className="font-serif font-medium text-lg text-editorial-dark flex items-center gap-2">
+            <Filter size={16} className="text-editorial-accent" />
+            Filter History Logs
+          </h3>
+          
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => handleExportCSV(filteredLogs, 'filtered_logs_history.csv')}
+              disabled={filteredLogs.length === 0}
+              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border rounded-none transition-all cursor-pointer ${
+                filteredLogs.length > 0
+                  ? 'bg-editorial-dark hover:bg-editorial-accent hover:text-editorial-bg text-editorial-bg border-editorial-dark'
+                  : 'bg-editorial-dark/5 text-editorial-dark/30 border-editorial-dark/10 cursor-not-allowed'
+              }`}
+              title="Download only the currently filtered logs as CSV"
+            >
+              <Download size={13} />
+              <span>Export Filtered ({filteredLogs.length})</span>
+            </button>
+            
+            <button
+              onClick={() => handleExportCSV(logs, 'all_logs_history.csv')}
+              disabled={logs.length === 0}
+              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border rounded-none transition-all cursor-pointer ${
+                logs.length > 0
+                  ? 'bg-editorial-bg hover:bg-editorial-dark/5 text-editorial-dark border-editorial-dark/20'
+                  : 'bg-editorial-bg text-editorial-dark/30 border-editorial-dark/10 cursor-not-allowed'
+              }`}
+              title="Download entire log history as CSV"
+            >
+              <Download size={13} />
+              <span>Export All ({logs.length})</span>
+            </button>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Search bar */}
