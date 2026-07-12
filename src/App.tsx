@@ -1230,6 +1230,21 @@ export default function App() {
     }
   };
 
+  const handleQuickResetCSV = () => {
+    setSelectedCSVFileName(null);
+    setPendingCSVText('');
+    setPendingCSVHeaders([]);
+    setCsvImportStep('idle');
+    setCsvImportStatus(null);
+    setCsvImportMessage('');
+    setMappedColumnsCount(0);
+    setTotalParsedRows(0);
+    setImportedLogsCount(0);
+    setImportedProgressPercentage(0);
+    setIsSimulatingImport(false);
+    setLastAppliedPresetName(null);
+  };
+
   const handleRevertLastCSVImport = () => {
     if (lastImportedLogIds.length === 0) return;
     
@@ -1918,6 +1933,22 @@ export default function App() {
                       <Download size={11} />
                       <span>Template</span>
                     </button>
+
+                    {/* Quick Reset Button */}
+                    <button
+                      type="button"
+                      onClick={handleQuickResetCSV}
+                      disabled={!selectedCSVFileName && csvImportStep === 'idle'}
+                      className={`flex items-center gap-1 border transition-all uppercase font-semibold text-[10px] font-mono px-2.5 py-1.5 cursor-pointer ${
+                        selectedCSVFileName || csvImportStep !== 'idle'
+                          ? 'bg-rose-50/70 border-rose-200 text-rose-700 hover:bg-rose-50 hover:border-rose-400'
+                          : 'bg-editorial-bg border-editorial-dark/10 text-editorial-dark/30 cursor-not-allowed'
+                      }`}
+                      title="Reset selected file, mapped configurations, and pipeline progress"
+                    >
+                      <RotateCcw size={11} className={selectedCSVFileName || csvImportStep !== 'idle' ? "animate-pulse" : ""} />
+                      <span>Quick Reset</span>
+                    </button>
                   </div>
                 </div>
 
@@ -2095,10 +2126,7 @@ export default function App() {
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            setSelectedCSVFileName(null);
-                            setPendingCSVText('');
-                            setPendingCSVHeaders([]);
-                            setCsvImportStep('idle');
+                            handleQuickResetCSV();
                           }}
                           className="px-2 py-1 text-[9px] font-mono uppercase bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 border border-rose-500/20 transition-colors cursor-pointer"
                         >
