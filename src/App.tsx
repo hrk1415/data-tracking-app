@@ -60,6 +60,15 @@ import {
   Filter
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts';
 
 function DiffIndicator({ diff, prefix = "" }: { diff: number; prefix?: string }) {
   if (diff > 0) {
@@ -565,6 +574,57 @@ export default function App() {
       completedGoals: completedGoalsOnDate,
       completionRate: trackersWithGoals > 0 ? Math.round((completedGoalsOnDate / trackersWithGoals) * 100) : 0,
     };
+  }, [trackers, logs, selectedDate]);
+
+  // Calculate past 7 days of goal completion rates ending on selectedDate for trend visualization
+  const last7DaysData = useMemo(() => {
+    if (!selectedDate) return [];
+    
+    const data = [];
+    const baseDate = new Date(selectedDate + 'T12:00:00');
+    
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(baseDate);
+      d.setDate(baseDate.getDate() - i);
+      const dStr = d.toISOString().split('T')[0];
+      
+      // Calculate completion rate for dStr
+      let completedGoalsOnDate = 0;
+      let trackersWithGoals = 0;
+      
+      trackers.forEach(t => {
+        if (t.targetValue) {
+          trackersWithGoals++;
+          const tLogs = logs.filter(l => l.trackerId === t.id && l.date === dStr);
+          const totalVal = t.type === 'counter'
+            ? tLogs.reduce((sum, l) => sum + l.value, 0)
+            : (tLogs.length > 0 ? tLogs[tLogs.length - 1].value : 0);
+
+          if (totalVal >= t.targetValue) {
+            completedGoalsOnDate++;
+          }
+        }
+      });
+      
+      const completionRate = trackersWithGoals > 0 
+        ? Math.round((completedGoalsOnDate / trackersWithGoals) * 100) 
+        : 0;
+        
+      const dayLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const weekdayLabel = d.toLocaleDateString('en-US', { weekday: 'short' });
+      
+      data.push({
+        date: dStr,
+        dayLabel,
+        weekdayLabel,
+        displayLabel: `${weekdayLabel} (${dayLabel})`,
+        rate: completionRate,
+        completed: completedGoalsOnDate,
+        total: trackersWithGoals,
+      });
+    }
+    
+    return data;
   }, [trackers, logs, selectedDate]);
 
   // Track dates where confetti celebration has already played in the current session
@@ -2275,6 +2335,94 @@ export default function App() {
                       <span>75%</span>
                       <span>100%</span>
                     </div>
+                  </div>
+
+                  {/* Goal Completion Rate Trend over the last 7 days */}
+                  <div className="pt-4 border-t border-editorial-dark/10">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-1.5">
+                        <TrendingUp size={14} className="text-editorial-accent" />
+                        <h4 className="text-[10px] font-mono text-editorial-accent tracking-widest uppercase font-semibold">
+                          Goal Completion Trend (Last 7 Days)
+                        </h4>
+                      </div>
+                      <span className="text-[10px] font-mono text-editorial-dark/50">
+                        Trend up to {formattedSelectedDate}
+                      </span>
+                    </div>
+
+                    {dailyStats.withGoals > 0 ? (
+                      <div className="h-44 w-full animate-fade-in" id="goal-completion-rate-trend-chart">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={last7DaysData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="goalTrendGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="var(--editorial-accent)" stopOpacity={0.25} />
+                                <stop offset="95%" stopColor="var(--editorial-accent)" stopOpacity={0.0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="var(--editorial-dark)" strokeOpacity={0.1} />
+                            <XAxis
+                              dataKey="weekdayLabel"
+                              tick={{ fontSize: 9, fill: 'var(--editorial-dark)', opacity: 0.6, fontFamily: 'monospace' }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <YAxis
+                              domain={[0, 100]}
+                              ticks={[0, 25, 50, 75, 100]}
+                              tick={{ fontSize: 9, fill: 'var(--editorial-dark)', opacity: 0.6, fontFamily: 'monospace' }}
+                              tickFormatter={(v) => `${v}%`}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const data = payload[0].payload;
+                                  return (
+                                    <div className="bg-editorial-dark text-editorial-bg rounded-none p-3 shadow-md text-xs space-y-1 font-sans border border-editorial-accent/30 min-w-[160px]">
+                                      <p className="font-mono text-[9px] text-editorial-bg/60 border-b border-editorial-bg/15 pb-1 mb-1">
+                                        {data.displayLabel}
+                                      </p>
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-editorial-bg/90 font-serif">Completion Rate:</span>
+                                        <span className="font-mono font-bold text-editorial-accent text-sm">
+                                          {data.rate}%
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-between text-[10px] text-editorial-bg/75">
+                                        <span>Goals Achieved:</span>
+                                        <span className="font-mono">
+                                          {data.completed} of {data.total}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="rate"
+                              stroke="var(--editorial-accent)"
+                              strokeWidth={2}
+                              fillOpacity={1}
+                              fill="url(#goalTrendGradient)"
+                              dot={{ r: 3, stroke: "var(--editorial-accent)", strokeWidth: 1.5, fill: "var(--editorial-bg)" }}
+                              activeDot={{ r: 5, stroke: "var(--editorial-accent)", strokeWidth: 2, fill: "var(--editorial-accent)" }}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="border border-dashed border-editorial-dark/20 p-6 text-center bg-editorial-dark/[0.01]">
+                        <p className="text-xs font-serif italic text-editorial-dark/60">
+                          Configure a goal target on at least one tracker to view completion trends!
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Daily Goal Target List & Justifications */}
