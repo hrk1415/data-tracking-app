@@ -8,6 +8,20 @@ import confetti from 'canvas-confetti';
 import { Tracker, LogEntry, CATEGORIES, COLOR_MAP, DailyReflection, Milestone, MILESTONE_CATEGORIES } from './types';
 import { loadData, saveTrackers, saveLogs, saveReflections, exportDataAsJson, importDataFromJson } from './utils/storage';
 import { importLogsFromCSV, parseCSV, ColumnMapping } from './utils/csvParser';
+
+interface SavedPreset {
+  id: string;
+  name: string;
+  dateHeader?: string;
+  nameHeader?: string;
+  valHeader?: string;
+  catHeader?: string;
+  unitHeader?: string;
+  goalHeader?: string;
+  notesHeader?: string;
+  timestampHeader?: string;
+  useSmartFormatting: boolean;
+}
 import { AddTrackerModal } from './components/AddTrackerModal';
 import { CSVMappingModal } from './components/CSVMappingModal';
 import { TrackerCard } from './components/TrackerCard';
@@ -60,7 +74,8 @@ import {
   AlertCircle,
   HelpCircle,
   Filter,
-  Sliders
+  Sliders,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -125,6 +140,11 @@ export default function App() {
   const [csvRowFilterQuery, setCsvRowFilterQuery] = useState('');
   const [selectedCSVFileName, setSelectedCSVFileName] = useState<string | null>(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [smartAutoImport, setSmartAutoImport] = useState<boolean>(() => {
+    const saved = localStorage.getItem('csv_smart_auto_import');
+    return saved ? JSON.parse(saved) : true;
+  });
+  const [lastAppliedPresetName, setLastAppliedPresetName] = useState<string | null>(null);
 
   // States for interactive CSV Import Progress Dashboard
   const [csvImportStep, setCsvImportStep] = useState<'idle' | 'file_loaded' | 'mapping' | 'importing' | 'success' | 'error'>('idle');
@@ -1084,13 +1104,67 @@ export default function App() {
         setImportedProgressPercentage(0);
         setIsSimulatingImport(false);
         // Do NOT open the mapping modal automatically anymore!
+
+        let didAutoImport = false;
+        if (smartAutoImport) {
+          const stored = localStorage.getItem('csv_custom_mapping_presets');
+          if (stored) {
+            try {
+              const presets: SavedPreset[] = JSON.parse(stored);
+              const headerRowLower = headerRow.map(h => h.trim().toLowerCase());
+              const matchingPreset = [...presets].reverse().find(p => {
+                if (!p.dateHeader || !p.nameHeader || !p.valHeader) return false;
+                const hasDate = headerRowLower.includes(p.dateHeader.trim().toLowerCase());
+                const hasName = headerRowLower.includes(p.nameHeader.trim().toLowerCase());
+                const hasVal = headerRowLower.includes(p.valHeader.trim().toLowerCase());
+                return hasDate && hasName && hasVal;
+              });
+
+              if (matchingPreset) {
+                const dateIdx = headerRow.findIndex(h => h.trim().toLowerCase() === matchingPreset.dateHeader?.trim().toLowerCase());
+                const nameIdx = headerRow.findIndex(h => h.trim().toLowerCase() === matchingPreset.nameHeader?.trim().toLowerCase());
+                const valIdx = headerRow.findIndex(h => h.trim().toLowerCase() === matchingPreset.valHeader?.trim().toLowerCase());
+
+                const catIdx = matchingPreset.catHeader ? headerRow.findIndex(h => h.trim().toLowerCase() === matchingPreset.catHeader.trim().toLowerCase()) : -1;
+                const unitIdx = matchingPreset.unitHeader ? headerRow.findIndex(h => h.trim().toLowerCase() === matchingPreset.unitHeader.trim().toLowerCase()) : -1;
+                const goalIdx = matchingPreset.goalHeader ? headerRow.findIndex(h => h.trim().toLowerCase() === matchingPreset.goalHeader.trim().toLowerCase()) : -1;
+                const notesIdx = matchingPreset.notesHeader ? headerRow.findIndex(h => h.trim().toLowerCase() === matchingPreset.notesHeader.trim().toLowerCase()) : -1;
+                const timestampIdx = matchingPreset.timestampHeader ? headerRow.findIndex(h => h.trim().toLowerCase() === matchingPreset.timestampHeader.trim().toLowerCase()) : -1;
+
+                const mapping: ColumnMapping = {
+                  dateIdx,
+                  nameIdx,
+                  valIdx,
+                  catIdx: catIdx !== -1 ? catIdx : undefined,
+                  unitIdx: unitIdx !== -1 ? unitIdx : undefined,
+                  goalIdx: goalIdx !== -1 ? goalIdx : undefined,
+                  notesIdx: notesIdx !== -1 ? notesIdx : undefined,
+                  timestampIdx: timestampIdx !== -1 ? timestampIdx : undefined,
+                };
+
+                setMappedColumnsCount(3);
+                setLastAppliedPresetName(matchingPreset.name);
+                handleConfirmCSVMapping(mapping, matchingPreset.useSmartFormatting, finalCSVText);
+                didAutoImport = true;
+              }
+            } catch (err) {
+              console.error('Error in smart auto-import:', err);
+            }
+          }
+        }
+
+        if (!didAutoImport) {
+          setMappedColumnsCount(0);
+          setLastAppliedPresetName(null);
+        }
       }
     };
     reader.readAsText(file);
   };
 
-  const handleConfirmCSVMapping = (mapping: ColumnMapping, useSmartFormatting: boolean) => {
-    const result = importLogsFromCSV(pendingCSVText, trackers, mapping, useSmartFormatting);
+  const handleConfirmCSVMapping = (mapping: ColumnMapping, useSmartFormatting: boolean, csvTextOverride?: string) => {
+    const textToUse = csvTextOverride !== undefined ? csvTextOverride : pendingCSVText;
+    const result = importLogsFromCSV(textToUse, trackers, mapping, useSmartFormatting);
     if (result && result.importedCount > 0) {
       setIsSimulatingImport(true);
       setCsvImportStep('importing');
@@ -1124,8 +1198,10 @@ export default function App() {
           setLastImportedLogIds(importedIds);
           
           const filterSuffix = csvRowFilterQuery.trim() ? ` (filtered by "${csvRowFilterQuery.trim()}")` : '';
+          const presetSuffix = lastAppliedPresetName ? ` (automatically mapped via "${lastAppliedPresetName}" preset)` : '';
           setCsvImportStatus('success');
-          setCsvImportMessage(`Successfully imported ${result.importedCount} logs${filterSuffix}!`);
+          setCsvImportMessage(`Successfully imported ${result.importedCount} logs${filterSuffix}${presetSuffix}!`);
+          setLastAppliedPresetName(null);
           
           // Keep the uploader dashboard showing 100% success state, but clear temporary status messages after 5 seconds
           setTimeout(() => {
@@ -1142,6 +1218,7 @@ export default function App() {
       setCsvImportStep('error');
       setCsvImportStatus('error');
       setCsvImportMessage('Import failed. No valid log rows were parsed or imported.');
+      setLastAppliedPresetName(null);
       
       // Reset status after 5 seconds
       setTimeout(() => {
@@ -1909,6 +1986,49 @@ export default function App() {
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                {/* SMART AUTO-IMPORT TOGGLE CONTROL */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border border-editorial-dark/15 bg-editorial-dark/[0.02] p-4 text-xs gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className={`p-1.5 border shrink-0 transition-colors ${
+                      smartAutoImport 
+                        ? 'bg-editorial-orange/10 border-editorial-orange/20 text-editorial-orange' 
+                        : 'bg-editorial-dark/5 border-editorial-dark/10 text-editorial-dark/45'
+                    }`}>
+                      <Zap size={14} className={smartAutoImport ? "fill-editorial-orange" : ""} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-serif font-semibold text-editorial-dark flex items-center gap-1.5">
+                        Smart Auto-Import
+                        {smartAutoImport && (
+                          <span className="bg-editorial-orange/10 text-editorial-orange text-[8px] font-mono px-1.5 py-0.5 uppercase tracking-wider font-semibold">
+                            Active
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[10px] text-editorial-dark/55 mt-0.5 max-w-xl leading-relaxed">
+                        When enabled, dropping a file that matches the header structure of your last saved favorite configuration will automatically map and import it instantly.
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !smartAutoImport;
+                      setSmartAutoImport(next);
+                      localStorage.setItem('csv_smart_auto_import', JSON.stringify(next));
+                    }}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-1 focus:ring-editorial-orange select-none self-end sm:self-auto ${
+                      smartAutoImport ? 'bg-editorial-orange' : 'bg-editorial-dark/20'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        smartAutoImport ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
 
                 {/* GRAPHICAL FILE DROP & INPUT HELPER */}
                 <div 
