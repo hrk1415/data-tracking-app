@@ -86,6 +86,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  ReferenceLine,
 } from 'recharts';
 
 function DiffIndicator({ diff, prefix = "" }: { diff: number; prefix?: string }) {
@@ -2715,6 +2716,27 @@ export default function App() {
                                 }
                                 return null;
                               }}
+                            />
+                            <ReferenceLine 
+                              y={25} 
+                              stroke="var(--editorial-dark)" 
+                              strokeDasharray="3 3" 
+                              strokeOpacity={0.2} 
+                              label={{ value: '25% Threshold', fill: 'var(--editorial-dark)', opacity: 0.4, fontSize: 8, fontFamily: 'monospace', position: 'insideBottomRight' }} 
+                            />
+                            <ReferenceLine 
+                              y={50} 
+                              stroke="var(--editorial-dark)" 
+                              strokeDasharray="3 3" 
+                              strokeOpacity={0.2} 
+                              label={{ value: '50% Threshold', fill: 'var(--editorial-dark)', opacity: 0.4, fontSize: 8, fontFamily: 'monospace', position: 'insideBottomRight' }} 
+                            />
+                            <ReferenceLine 
+                              y={75} 
+                              stroke="var(--editorial-dark)" 
+                              strokeDasharray="3 3" 
+                              strokeOpacity={0.2} 
+                              label={{ value: '75% Threshold', fill: 'var(--editorial-dark)', opacity: 0.4, fontSize: 8, fontFamily: 'monospace', position: 'insideBottomRight' }} 
                             />
                             <Area
                               type="monotone"
