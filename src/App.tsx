@@ -3180,6 +3180,10 @@ export default function App() {
                   setFilterTrackerId={setHistoryFilterTrackerId}
                   filterCategory={historyFilterCategory}
                   setFilterCategory={setHistoryFilterCategory}
+                  onJumpToDate={(date) => {
+                    setSelectedDate(date);
+                    setCurrentTab('dashboard');
+                  }}
                 />
               </motion.div>
             )}

@@ -31,6 +31,7 @@ interface LogHistoryProps {
   setFilterTrackerId?: (id: string) => void;
   filterCategory?: string;
   setFilterCategory?: (cat: string) => void;
+  onJumpToDate?: (date: string) => void;
 }
 
 export function LogHistory({
@@ -44,6 +45,7 @@ export function LogHistory({
   setFilterTrackerId: externalSetFilterTrackerId,
   filterCategory: externalFilterCategory,
   setFilterCategory: externalSetFilterCategory,
+  onJumpToDate,
 }: LogHistoryProps) {
   // Inline fallbacks if external controls aren't provided
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
@@ -381,10 +383,15 @@ export function LogHistory({
 
                         {/* Date */}
                         <td className="px-6 py-4 text-editorial-dark/80 font-mono text-xs whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <Calendar size={13} className="text-editorial-accent" />
+                          <button
+                            type="button"
+                            onClick={() => onJumpToDate?.(log.date)}
+                            className="flex items-center gap-1.5 hover:text-editorial-accent hover:underline cursor-pointer group text-left font-mono font-semibold"
+                            title="Click to view this day's metrics and milestones on the Dashboard"
+                          >
+                            <Calendar size={13} className="text-editorial-accent group-hover:scale-110 transition-all duration-200" />
                             <span>{formatDateDisplay(log.date)}</span>
-                          </div>
+                          </button>
                         </td>
 
                         {/* Value Column */}
