@@ -102,6 +102,7 @@ export interface Milestone {
   time: string; // HH:MM
   text: string;
   importance?: 'low' | 'medium' | 'high';
+  notes?: string;
 }
 
 export interface DailyReflection {

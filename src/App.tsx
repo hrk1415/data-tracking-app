@@ -149,6 +149,7 @@ export default function App() {
   const [milestoneTimeInput, setMilestoneTimeInput] = useState<string>('');
   const [milestoneTextInput, setMilestoneTextInput] = useState<string>('');
   const [milestoneImportanceInput, setMilestoneImportanceInput] = useState<'low' | 'medium' | 'high' | undefined>(undefined);
+  const [milestoneNotesInput, setMilestoneNotesInput] = useState<string>('');
 
   const getCurrentTimeHHMM = () => {
     const now = new Date();
@@ -159,6 +160,7 @@ export default function App() {
     setMilestoneTimeInput(getCurrentTimeHHMM());
     setMilestoneTextInput('');
     setMilestoneImportanceInput(undefined);
+    setMilestoneNotesInput('');
   }, [selectedDate]);
 
   const [reminderEnabled, setReminderEnabled] = useState<boolean>(() => {
@@ -328,13 +330,14 @@ export default function App() {
     saveReflections(updated);
   };
 
-  const handleAddMilestone = (date: string, time: string, text: string, importance?: 'low' | 'medium' | 'high') => {
+  const handleAddMilestone = (date: string, time: string, text: string, importance?: 'low' | 'medium' | 'high', notes?: string) => {
     if (!text.trim() || !time) return;
     const newMilestone: Milestone = {
       id: Math.random().toString(36).substring(2, 9),
       time,
       text: text.trim(),
       importance,
+      notes: notes?.trim() || undefined,
     };
 
     let updated: DailyReflection[];
@@ -2839,55 +2842,69 @@ export default function App() {
                       onSubmit={(e) => {
                         e.preventDefault();
                         if (milestoneTextInput.trim()) {
-                          handleAddMilestone(selectedDate, milestoneTimeInput, milestoneTextInput, milestoneImportanceInput);
+                          handleAddMilestone(selectedDate, milestoneTimeInput, milestoneTextInput, milestoneImportanceInput, milestoneNotesInput);
                           setMilestoneTextInput('');
+                          setMilestoneNotesInput('');
                           setMilestoneImportanceInput(undefined);
                         }
                       }}
-                      className="flex flex-col sm:flex-row items-stretch gap-2"
+                      className="space-y-2 bg-editorial-dark/[0.02] border border-editorial-dark/10 p-3"
                     >
-                      <div className="flex items-center border border-editorial-dark/20 bg-editorial-bg px-2 shrink-0 sm:w-32">
-                        <Clock size={12} className="text-editorial-dark/40 mr-1.5" />
-                        <input
-                          type="time"
-                          value={milestoneTimeInput}
-                          onChange={(e) => setMilestoneTimeInput(e.target.value)}
-                          className="w-full bg-transparent border-0 text-xs font-mono text-editorial-dark p-1.5 outline-hidden focus:ring-0 cursor-pointer"
-                          required
-                        />
-                      </div>
-                      <div className="flex-1 flex items-stretch border border-editorial-dark/20 bg-editorial-bg px-2">
-                        <input
-                          type="text"
-                          value={milestoneTextInput}
-                          onChange={(e) => setMilestoneTextInput(e.target.value)}
-                          placeholder="Log a milestone (e.g. Completed morning jog, Met milestone 1)"
-                          className="w-full bg-transparent border-0 text-xs font-serif italic text-editorial-dark p-1.5 outline-hidden focus:ring-0 placeholder:text-editorial-dark/30"
-                          required
-                        />
-                      </div>
-                      
-                      {/* Importance Level Selector */}
-                      <div className="flex items-center border border-editorial-dark/20 bg-editorial-bg px-2 shrink-0 sm:w-36">
-                        <select
-                          value={milestoneImportanceInput || ''}
-                          onChange={(e) => setMilestoneImportanceInput(e.target.value ? e.target.value as 'low' | 'medium' | 'high' : undefined)}
-                          className="w-full bg-transparent border-0 text-xs font-mono text-editorial-dark p-1.5 outline-hidden focus:ring-0 cursor-pointer"
+                      <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                        <div className="flex items-center border border-editorial-dark/20 bg-editorial-bg px-2 shrink-0 sm:w-32">
+                          <Clock size={12} className="text-editorial-dark/40 mr-1.5" />
+                          <input
+                            type="time"
+                            value={milestoneTimeInput}
+                            onChange={(e) => setMilestoneTimeInput(e.target.value)}
+                            className="w-full bg-transparent border-0 text-xs font-mono text-editorial-dark p-1.5 outline-hidden focus:ring-0 cursor-pointer"
+                            required
+                          />
+                        </div>
+                        <div className="flex-1 flex items-stretch border border-editorial-dark/20 bg-editorial-bg px-2">
+                          <input
+                            type="text"
+                            value={milestoneTextInput}
+                            onChange={(e) => setMilestoneTextInput(e.target.value)}
+                            placeholder="Log a milestone (e.g. Completed morning jog, Met milestone 1)"
+                            className="w-full bg-transparent border-0 text-xs font-serif italic text-editorial-dark p-1.5 outline-hidden focus:ring-0 placeholder:text-editorial-dark/30"
+                            required
+                          />
+                        </div>
+                        
+                        {/* Importance Level Selector */}
+                        <div className="flex items-center border border-editorial-dark/20 bg-editorial-bg px-2 shrink-0 sm:w-36">
+                          <select
+                            value={milestoneImportanceInput || ''}
+                            onChange={(e) => setMilestoneImportanceInput(e.target.value ? e.target.value as 'low' | 'medium' | 'high' : undefined)}
+                            className="w-full bg-transparent border-0 text-xs font-mono text-editorial-dark p-1.5 outline-hidden focus:ring-0 cursor-pointer"
+                          >
+                            <option value="" className="bg-editorial-bg text-editorial-dark/60">Importance...</option>
+                            <option value="low" className="bg-editorial-bg text-editorial-blue font-semibold">Low Priority</option>
+                            <option value="medium" className="bg-editorial-bg text-editorial-orange font-semibold">Medium Priority</option>
+                            <option value="high" className="bg-editorial-bg text-editorial-rose font-semibold">High Priority</option>
+                          </select>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="bg-editorial-dark hover:bg-editorial-accent hover:text-editorial-bg text-editorial-bg font-mono text-xs px-4 py-2 rounded-none transition-colors shrink-0 flex items-center justify-center gap-1 cursor-pointer"
                         >
-                          <option value="" className="bg-editorial-bg text-editorial-dark/60">Importance...</option>
-                          <option value="low" className="bg-editorial-bg text-editorial-blue font-semibold">Low Priority</option>
-                          <option value="medium" className="bg-editorial-bg text-editorial-orange font-semibold">Medium Priority</option>
-                          <option value="high" className="bg-editorial-bg text-editorial-rose font-semibold">High Priority</option>
-                        </select>
+                          <Plus size={13} />
+                          <span>Add</span>
+                        </button>
                       </div>
 
-                      <button
-                        type="submit"
-                        className="bg-editorial-dark hover:bg-editorial-accent hover:text-editorial-bg text-editorial-bg font-mono text-xs px-4 py-2 rounded-none transition-colors shrink-0 flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <Plus size={13} />
-                        <span>Add</span>
-                      </button>
+                      {/* Notes Textarea */}
+                      <div className="border border-editorial-dark/20 bg-editorial-bg px-2.5 py-1.5">
+                        <textarea
+                          value={milestoneNotesInput}
+                          onChange={(e) => setMilestoneNotesInput(e.target.value)}
+                          placeholder="Add optional notes or detailed observations about this milestone..."
+                          rows={2}
+                          className="w-full bg-transparent border-0 text-xs font-sans text-editorial-dark p-0.5 outline-hidden focus:ring-0 placeholder:text-editorial-dark/30 resize-none leading-relaxed"
+                        />
+                      </div>
                     </form>
 
                     {/* Timeline List of Milestones */}
@@ -2898,35 +2915,42 @@ export default function App() {
                           .map((ms) => (
                             <div
                               key={ms.id}
-                              className="flex items-center justify-between border border-editorial-dark/10 p-2.5 bg-editorial-dark/[0.01] hover:bg-editorial-dark/[0.03] transition-all"
+                              className="flex flex-col gap-1.5 border border-editorial-dark/10 p-3 bg-editorial-dark/[0.01] hover:bg-editorial-dark/[0.03] transition-all"
                             >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="shrink-0 font-mono text-[10px] font-bold bg-editorial-accent/10 text-editorial-accent px-1.5 py-0.5 border border-editorial-accent/15">
-                                  {ms.time}
-                                </span>
-                                {ms.importance && (
-                                  <span className={`shrink-0 text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 border rounded-none ${
-                                    ms.importance === 'high'
-                                      ? 'bg-editorial-rose-light text-editorial-rose border-editorial-rose/25'
-                                      : ms.importance === 'medium'
-                                      ? 'bg-editorial-orange-light text-editorial-orange border-editorial-orange/25'
-                                      : 'bg-editorial-blue-light text-editorial-blue border-editorial-blue/25'
-                                  }`}>
-                                    {ms.importance}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                                  <span className="shrink-0 font-mono text-[10px] font-bold bg-editorial-accent/10 text-editorial-accent px-1.5 py-0.5 border border-editorial-accent/15">
+                                    {ms.time}
                                   </span>
-                                )}
-                                <span className="text-xs font-serif italic text-editorial-dark/85 truncate leading-relaxed">
-                                  {ms.text}
-                                </span>
+                                  {ms.importance && (
+                                    <span className={`shrink-0 text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 border rounded-none ${
+                                      ms.importance === 'high'
+                                        ? 'bg-editorial-rose-light text-editorial-rose border-editorial-rose/25'
+                                        : ms.importance === 'medium'
+                                        ? 'bg-editorial-orange-light text-editorial-orange border-editorial-orange/25'
+                                        : 'bg-editorial-blue-light text-editorial-blue border-editorial-blue/25'
+                                    }`}>
+                                      {ms.importance}
+                                    </span>
+                                  )}
+                                  <span className="text-xs font-serif font-semibold italic text-editorial-dark/85 leading-relaxed break-words">
+                                    {ms.text}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteMilestone(selectedDate, ms.id)}
+                                  className="text-editorial-dark/30 hover:text-rose-600 p-1 transition-colors cursor-pointer shrink-0"
+                                  title="Delete milestone"
+                                >
+                                  <X size={12} />
+                                </button>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteMilestone(selectedDate, ms.id)}
-                                className="text-editorial-dark/30 hover:text-rose-600 p-1 transition-colors cursor-pointer"
-                                title="Delete milestone"
-                              >
-                                <X size={12} />
-                              </button>
+                              {ms.notes && (
+                                <p className="text-[11px] text-editorial-dark/70 font-sans pl-2 border-l border-editorial-dark/15 leading-relaxed italic whitespace-pre-wrap">
+                                  {ms.notes}
+                                </p>
+                              )}
                             </div>
                           ))}
                       </div>
@@ -2951,6 +2975,7 @@ export default function App() {
                         .map((ms) => (
                           <div
                             key={ms.id}
+                            title={ms.notes ? `Observation: ${ms.notes}` : undefined}
                             className={`flex items-center gap-2 border px-3.5 py-1.5 rounded-full shadow-xs transition-all duration-200 ${
                               ms.importance === 'high'
                                 ? 'bg-editorial-rose-light/70 border-editorial-rose/30 text-editorial-dark'
