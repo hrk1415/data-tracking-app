@@ -46,7 +46,19 @@ export function WeeklySummaryDashboardWidget({
   // Compute stats for the past 7 days ending on selectedDate (inclusive)
   const statsData = useMemo(() => {
     const last7Days: string[] = [];
-    const refDate = new Date(selectedDate + 'T12:00:00');
+    let refDate = new Date();
+    if (selectedDate && selectedDate.includes('-')) {
+      const parts = selectedDate.split('-');
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const dVal = parseInt(parts[2], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(dVal)) {
+        refDate = new Date(y, m, dVal, 12, 0, 0);
+      }
+    }
+    if (isNaN(refDate.getTime())) {
+      refDate = new Date();
+    }
     
     for (let i = 0; i < 7; i++) {
       const d = new Date(refDate.getTime() - i * 24 * 60 * 60 * 1000);
