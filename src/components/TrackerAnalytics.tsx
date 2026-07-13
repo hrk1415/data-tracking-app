@@ -3526,8 +3526,27 @@ export function TrackerAnalytics({ trackers, logs, reflections = [] }: TrackerAn
                 maxDate = date;
               }
             });
+            let formattedMaxDate = '—';
+            if (maxDayCount > 0 && maxDate) {
+              const parts = maxDate.split('-');
+              if (parts.length >= 3) {
+                const y = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10) - 1;
+                const dVal = parseInt(parts[2], 10);
+                if (!isNaN(y) && !isNaN(m) && !isNaN(dVal)) {
+                  const dObj = new Date(y, m, dVal, 12, 0, 0);
+                  if (!isNaN(dObj.getTime())) {
+                    try {
+                      formattedMaxDate = dObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                    } catch (e) {
+                      formattedMaxDate = '—';
+                    }
+                  }
+                }
+              }
+            }
             const mostActiveDayLabel = maxDayCount > 0 
-              ? `${new Date(maxDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (${maxDayCount} logged)`
+              ? `${formattedMaxDate} (${maxDayCount} logged)`
               : '—';
 
             const avgMilestonesPerDay = (totalMilestones / 30).toFixed(1);
@@ -3853,12 +3872,29 @@ export function TrackerAnalytics({ trackers, logs, reflections = [] }: TrackerAn
                       {filteredFeed.map((item, idx) => {
                         const m = item.milestone;
                         const catInfo = MILESTONE_CATEGORIES.find(c => c.id === (m.category || 'other')) || MILESTONE_CATEGORIES[3];
-                        const dateObj = new Date(item.date + 'T12:00:00');
-                        const formattedDate = dateObj.toLocaleDateString(undefined, { 
-                          weekday: 'short', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        });
+                        let formattedDate = '—';
+                        if (item.date) {
+                          const parts = item.date.split('-');
+                          if (parts.length >= 3) {
+                            const y = parseInt(parts[0], 10);
+                            const m = parseInt(parts[1], 10) - 1;
+                            const dVal = parseInt(parts[2], 10);
+                            if (!isNaN(y) && !isNaN(m) && !isNaN(dVal)) {
+                              const dObj = new Date(y, m, dVal, 12, 0, 0);
+                              if (!isNaN(dObj.getTime())) {
+                                try {
+                                  formattedDate = dObj.toLocaleDateString(undefined, { 
+                                    weekday: 'short', 
+                                    month: 'short', 
+                                    day: 'numeric' 
+                                  });
+                                } catch (e) {
+                                  formattedDate = '—';
+                                }
+                              }
+                            }
+                          }
+                        }
 
                         return (
                           <div 

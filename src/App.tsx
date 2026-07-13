@@ -33,6 +33,7 @@ import { LucideIcon } from './components/LucideIcon';
 import { GoalNotesPanel } from './components/GoalNotesPanel';
 import { MotivationalQuote } from './components/MotivationalQuote';
 import { WeeklySummaryDashboardWidget } from './components/WeeklySummaryDashboardWidget';
+import { MonthlyGoalsSummary } from './components/MonthlyGoalsSummary';
 import { DateComparisonDashboardView } from './components/DateComparisonDashboardView';
 import {
   LayoutDashboard,
@@ -2958,6 +2959,14 @@ export default function App() {
                   trackers={trackers}
                   logs={logs}
                   selectedDate={selectedDate}
+                />
+
+                {/* Monthly Goals Summary */}
+                <MonthlyGoalsSummary
+                  trackers={trackers}
+                  logs={logs}
+                  selectedDate={selectedDate}
+                  onSelectDate={setSelectedDate}
                 />
 
                 {/* Daily Aggregates Bento Grid */}
