@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { jsPDF } from 'jspdf';
-import { Tracker, LogEntry, COLOR_MAP, CATEGORIES } from '../types';
+import { Tracker, LogEntry, COLOR_MAP, CATEGORIES, DailyReflection, MILESTONE_CATEGORIES, Milestone } from '../types';
 import { LucideIcon } from './LucideIcon';
 import { ActivityConsistencySnapshot } from './ActivityConsistencySnapshot';
 import { WeeklyTextSummary } from './WeeklyTextSummary';
@@ -24,7 +24,8 @@ import {
   Lightbulb,
   Activity,
   Table,
-  Download
+  Download,
+  Flag
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -39,7 +40,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ReferenceLine
+  ReferenceLine,
+  PieChart,
+  Pie,
+  Cell
 } from 'recharts';
 
 const colorHexes: Record<string, string> = {
@@ -55,6 +59,7 @@ const colorHexes: Record<string, string> = {
 interface TrackerAnalyticsProps {
   trackers: Tracker[];
   logs: LogEntry[];
+  reflections?: DailyReflection[];
 }
 
 interface Insight {
@@ -66,8 +71,8 @@ interface Insight {
 
 type TimeMode = '7' | '30' | '90' | 'custom';
 
-export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
-  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly' | 'heatmap' | 'category_baselines' | 'monthly_overview' | 'calendar_view'>('individual');
+export function TrackerAnalytics({ trackers, logs, reflections = [] }: TrackerAnalyticsProps) {
+  const [analyticsView, setAnalyticsView] = useState<'individual' | 'weekly' | 'heatmap' | 'category_baselines' | 'monthly_overview' | 'calendar_view' | 'milestones'>('individual');
   const [selectedTrackerId, setSelectedTrackerId] = useState<string>(
     trackers.length > 0 ? trackers[0].id : ''
   );
@@ -83,6 +88,7 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedTag, setSelectedTag] = useState<string>('all');
+  const [milestoneFilter, setMilestoneFilter] = useState<string>('all');
 
   const allTags = useMemo(() => {
     const tagsSet = new Set<string>();
@@ -480,6 +486,97 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
     }
     return list;
   }, [timeMode, customStartDate, customEndDate]);
+
+  // Generate date list for the last 30 days
+  const last30DaysList = useMemo(() => {
+    const list: string[] = [];
+    const today = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+      list.push(d.toISOString().split('T')[0]);
+    }
+    return list;
+  }, []);
+
+  // Filter reflections in the last 30 days and extract milestones
+  const milestonesLast30Days = useMemo(() => {
+    const list: { milestone: Milestone; date: string }[] = [];
+    const dateSet = new Set(last30DaysList);
+    reflections.forEach(ref => {
+      if (dateSet.has(ref.date) && ref.milestones) {
+        ref.milestones.forEach(m => {
+          list.push({ milestone: m, date: ref.date });
+        });
+      }
+    });
+    // Sort chronological (oldest to newest)
+    return list.sort((a, b) => a.date.localeCompare(b.date));
+  }, [reflections, last30DaysList]);
+
+  // Aggregate category distribution for the pie chart
+  const categoryDistribution = useMemo(() => {
+    const counts: Record<string, number> = {
+      personal: 0,
+      work: 0,
+      fitness: 0,
+      other: 0,
+    };
+    
+    milestonesLast30Days.forEach(item => {
+      const cat = item.milestone.category || 'other';
+      const normalizedCat = counts[cat] !== undefined ? cat : 'other';
+      counts[normalizedCat]++;
+    });
+
+    return MILESTONE_CATEGORIES.map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      count: counts[cat.id],
+      color: cat.color,
+    }));
+  }, [milestonesLast30Days]);
+
+  // Aggregate stacked daily milestones count for 30-day BarChart
+  const dailyMilestoneData = useMemo(() => {
+    const dataMap = new Map<string, Record<string, number>>();
+    
+    // Initialize map with all last 30 days
+    last30DaysList.forEach(date => {
+      dataMap.set(date, {
+        personal: 0,
+        work: 0,
+        fitness: 0,
+        other: 0,
+      });
+    });
+
+    // Populate map
+    milestonesLast30Days.forEach(item => {
+      const date = item.date;
+      const cat = item.milestone.category || 'other';
+      const counts = dataMap.get(date);
+      if (counts) {
+        const normalizedCat = counts[cat] !== undefined ? cat : 'other';
+        counts[normalizedCat]++;
+      }
+    });
+
+    // Convert to array for Recharts
+    return last30DaysList.map(date => {
+      const counts = dataMap.get(date) || { personal: 0, work: 0, fitness: 0, other: 0 };
+      const dateObj = new Date(date + 'T12:00:00');
+      const formattedDate = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      
+      return {
+        date,
+        displayDate: formattedDate,
+        Personal: counts.personal,
+        Work: counts.work,
+        Fitness: counts.fitness,
+        Other: counts.other,
+      };
+    });
+  }, [last30DaysList, milestonesLast30Days]);
 
   // Daily average values for each tracker category over the selected range
   const categoryBaselineStats = useMemo(() => {
@@ -1642,6 +1739,18 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
             }`}
           >
             Calendar View
+          </button>
+          <button
+            type="button"
+            id="tab-milestones-view"
+            onClick={() => setAnalyticsView('milestones')}
+            className={`px-5 py-2.5 border-b-2 font-serif text-sm font-medium transition-all cursor-pointer ${
+              analyticsView === 'milestones'
+                ? 'border-editorial-accent text-editorial-accent'
+                : 'border-transparent text-editorial-dark/60 hover:text-editorial-dark hover:border-editorial-dark/10'
+            }`}
+          >
+            Milestone Distribution
           </button>
         </div>
 
@@ -3370,6 +3479,440 @@ export function TrackerAnalytics({ trackers, logs }: TrackerAnalyticsProps) {
               })()}
             </div>
           </div>
+        </div>
+      ) : analyticsView === 'milestones' ? (
+        /* Milestone Distribution & Activity Analysis */
+        <div className="space-y-6">
+          {/* Header Block */}
+          <div className="bg-editorial-bg p-6 rounded-none border border-editorial-dark/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 className="font-serif font-medium text-lg text-editorial-dark">
+                Milestones & Key Checkpoints
+              </h3>
+              <p className="text-xs font-sans italic text-editorial-dark/60 mt-0.5">
+                Distribution, composition, and activity trends of your recorded milestones over the last 30 days.
+              </p>
+            </div>
+            <div className="text-xs font-mono bg-editorial-dark/5 text-editorial-dark/60 border border-editorial-dark/10 px-3 py-1.5 self-start sm:self-auto uppercase tracking-wider font-semibold">
+              Range: Last 30 Days
+            </div>
+          </div>
+
+          {/* Stats Cards Row */}
+          {(() => {
+            const totalMilestones = milestonesLast30Days.length;
+            
+            // Calc most active category
+            let maxCount = -1;
+            let maxCatName = '—';
+            categoryDistribution.forEach(c => {
+              if (c.count > maxCount) {
+                maxCount = c.count;
+                maxCatName = c.name;
+              }
+            });
+            const mostActiveCategoryLabel = maxCount > 0 ? `${maxCatName} (${maxCount})` : '—';
+
+            // Calc most active day
+            const counts: Record<string, number> = {};
+            milestonesLast30Days.forEach(m => {
+              counts[m.date] = (counts[m.date] || 0) + 1;
+            });
+            let maxDayCount = 0;
+            let maxDate = '';
+            Object.entries(counts).forEach(([date, count]) => {
+              if (count > maxDayCount) {
+                maxDayCount = count;
+                maxDate = date;
+              }
+            });
+            const mostActiveDayLabel = maxDayCount > 0 
+              ? `${new Date(maxDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (${maxDayCount} logged)`
+              : '—';
+
+            const avgMilestonesPerDay = (totalMilestones / 30).toFixed(1);
+
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Total Milestones */}
+                <div className="bg-editorial-bg p-5 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-none bg-editorial-indigo-light/50 border border-editorial-indigo/20 text-editorial-indigo">
+                      <Flag size={20} className="stroke-[1.5px]" />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Total Milestones</span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-2xl font-mono font-light text-editorial-dark leading-none">
+                          {totalMilestones}
+                        </span>
+                        <span className="text-[10px] font-serif italic text-editorial-dark/60">recorded</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Most Active Category */}
+                <div className="bg-editorial-bg p-5 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-none bg-editorial-emerald-light/50 border border-editorial-emerald/20 text-editorial-emerald">
+                      <Sparkles size={20} className="stroke-[1.5px]" />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Active Category</span>
+                      <span className="block text-sm font-serif font-semibold text-editorial-dark mt-1.5 truncate max-w-[150px]">
+                        {mostActiveCategoryLabel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Most Active Day */}
+                <div className="bg-editorial-bg p-5 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-none bg-editorial-blue-light/50 border border-editorial-blue/20 text-editorial-blue">
+                      <Calendar size={20} className="stroke-[1.5px]" />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Most Active Day</span>
+                      <span className="block text-sm font-serif font-semibold text-editorial-dark mt-1.5 truncate max-w-[150px]" title={mostActiveDayLabel}>
+                        {mostActiveDayLabel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Average Daily */}
+                <div className="bg-editorial-bg p-5 rounded-none border border-editorial-dark/15 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-none bg-editorial-orange-light/50 border border-editorial-orange/20 text-editorial-orange">
+                      <TrendingUp size={20} className="stroke-[1.5px]" />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-mono font-medium text-editorial-dark/55 uppercase tracking-wider">Daily Frequency</span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-2xl font-mono font-light text-editorial-dark leading-none">
+                          {avgMilestonesPerDay}
+                        </span>
+                        <span className="text-[10px] font-serif italic text-editorial-dark/60">per day</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {milestonesLast30Days.length === 0 ? (
+            /* Elegant empty state */
+            <div className="bg-editorial-bg p-12 text-center border border-editorial-dark/15 flex flex-col items-center justify-center space-y-4">
+              <div className="p-4 bg-editorial-dark/[0.02] border border-editorial-dark/10 text-editorial-dark/40 rounded-none mb-2">
+                <Flag size={32} className="stroke-[1.25px]" />
+              </div>
+              <h4 className="font-serif font-medium text-lg text-editorial-dark">No Milestones Logged Yet</h4>
+              <p className="text-xs font-sans text-editorial-dark/60 max-w-md mx-auto leading-relaxed">
+                You haven't recorded any milestones or breakthroughs in the last 30 days. Log your key checkpoints and timeline updates directly from the dashboard to see interactive visual graphs here!
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Graphical Visualization Section */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left Side: Pie Chart & breakdown (5 cols) */}
+                <div className="lg:col-span-5 bg-editorial-bg p-6 border border-editorial-dark/15 flex flex-col justify-between space-y-6">
+                  <div>
+                    <h4 className="font-serif font-semibold text-sm text-editorial-dark">
+                      Milestone Category Share
+                    </h4>
+                    <p className="text-[10px] font-sans italic text-editorial-dark/50 mt-0.5">
+                      Distribution share across the 4 key life checkpoint domains
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-6 py-4">
+                    {/* Donut Chart */}
+                    <div className="h-40 w-40 shrink-0 relative flex items-center justify-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={categoryDistribution.filter(d => d.count > 0)}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={70}
+                            paddingAngle={4}
+                            dataKey="count"
+                          >
+                            {categoryDistribution.filter(d => d.count > 0).map((entry) => (
+                              <Cell 
+                                key={`cell-${entry.id}`} 
+                                fill={colorHexes[entry.color] || '#a398c2'} 
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-editorial-dark text-editorial-bg px-2.5 py-1.5 text-[10px] font-mono border border-editorial-bg/10 rounded-none shadow-md">
+                                    <span className="font-bold">{data.name}: </span>
+                                    <span>{data.count} ({Math.round((data.count / milestonesLast30Days.length) * 100)}%)</span>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="absolute flex flex-col items-center justify-center">
+                        <span className="text-xl font-mono font-light text-editorial-dark">
+                          {milestonesLast30Days.length}
+                        </span>
+                        <span className="text-[8px] font-mono uppercase tracking-wider text-editorial-dark/55">
+                          Total
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Breakdown List */}
+                    <div className="flex-1 space-y-2.5 w-full">
+                      {categoryDistribution.map(cat => {
+                        const pct = milestonesLast30Days.length > 0 
+                          ? Math.round((cat.count / milestonesLast30Days.length) * 100)
+                          : 0;
+                        const categoryHex = colorHexes[cat.color];
+                        
+                        return (
+                          <div key={cat.id} className="flex items-center justify-between text-xs font-sans">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span 
+                                className="h-2 w-2 shrink-0 rounded-none"
+                                style={{ backgroundColor: categoryHex }}
+                              />
+                              <span className="text-editorial-dark/80 font-medium truncate">
+                                {cat.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-editorial-dark/65 shrink-0">
+                              <span className="font-semibold">{cat.count}</span>
+                              <span className="text-editorial-dark/35">|</span>
+                              <span>{pct}%</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] font-mono text-editorial-dark/45 bg-editorial-dark/[0.02] border border-editorial-dark/5 p-3 leading-relaxed">
+                    Categories help organize work and personal milestones. Consider balance when setting weekly targets.
+                  </div>
+                </div>
+
+                {/* Right Side: Stacked Bar Chart Timeline (7 cols) */}
+                <div className="lg:col-span-7 bg-editorial-bg p-6 border border-editorial-dark/15 flex flex-col justify-between space-y-6">
+                  <div>
+                    <h4 className="font-serif font-semibold text-sm text-editorial-dark">
+                      30-Day Milestone Trends
+                    </h4>
+                    <p className="text-[10px] font-sans italic text-editorial-dark/50 mt-0.5">
+                      Daily occurrences stacked by category across the chronological timeline
+                    </p>
+                  </div>
+
+                  <div className="h-48 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={dailyMilestoneData}
+                        margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} stroke="var(--editorial-dark)" vertical={false} />
+                        <XAxis 
+                          dataKey="displayDate" 
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fill: 'var(--editorial-dark)', opacity: 0.45, fontSize: 8, fontFamily: 'monospace' }}
+                          interval="preserveEnd"
+                        />
+                        <YAxis 
+                          tickLine={false}
+                          axisLine={false}
+                          allowDecimals={false}
+                          tick={{ fill: 'var(--editorial-dark)', opacity: 0.45, fontSize: 8, fontFamily: 'monospace' }}
+                        />
+                        <Tooltip
+                          cursor={{ fill: 'var(--editorial-dark)', opacity: 0.03 }}
+                          content={({ active, payload, label }) => {
+                            if (active && payload && payload.length) {
+                              const hasData = payload.some(p => Number(p.value) > 0);
+                              if (!hasData) return null;
+                              return (
+                                <div className="bg-editorial-dark text-editorial-bg p-3 border border-editorial-bg/10 rounded-none shadow-lg text-[10px] font-mono space-y-1.5 min-w-[130px]">
+                                  <div className="font-serif font-bold text-xs border-b border-editorial-bg/10 pb-1 mb-1 text-editorial-bg/85">
+                                    {label}
+                                  </div>
+                                  {payload.map((p) => {
+                                    if (Number(p.value) === 0) return null;
+                                    return (
+                                      <div key={p.dataKey} className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="h-1.5 w-1.5 rounded-none" style={{ backgroundColor: p.color }} />
+                                          <span className="text-editorial-bg/70">{p.dataKey}</span>
+                                        </div>
+                                        <span className="font-bold">{p.value}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Legend 
+                          verticalAlign="top" 
+                          height={36}
+                          iconSize={8}
+                          iconType="rect"
+                          wrapperStyle={{ fontSize: 9, fontFamily: 'monospace', textTransform: 'uppercase', opacity: 0.6 }}
+                        />
+                        <Bar dataKey="Personal" stackId="a" fill={colorHexes.emerald} />
+                        <Bar dataKey="Work" stackId="a" fill={colorHexes.indigo} />
+                        <Bar dataKey="Fitness" stackId="a" fill={colorHexes.blue} />
+                        <Bar dataKey="Other" stackId="a" fill={colorHexes.violet} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="text-[10px] font-mono text-editorial-dark/45 italic">
+                    Tip: Hover over bar intervals to inspect exact milestone counts for specific calendar days.
+                  </div>
+                </div>
+              </div>
+
+              {/* Feed/Timeline Section */}
+              <div className="bg-editorial-bg p-6 border border-editorial-dark/15 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-editorial-dark/10 gap-4">
+                  <div>
+                    <h4 className="font-serif font-semibold text-sm text-editorial-dark">
+                      Milestone Log History
+                    </h4>
+                    <p className="text-[10px] font-sans italic text-editorial-dark/50 mt-0.5">
+                      Explore chronological milestone notes matching selected criteria
+                    </p>
+                  </div>
+
+                  {/* Filter tabs inside feed */}
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setMilestoneFilter('all')}
+                      className={`px-2.5 py-1 text-[9px] font-mono uppercase border cursor-pointer transition-colors ${
+                        milestoneFilter === 'all'
+                          ? 'bg-editorial-dark text-editorial-bg border-editorial-dark font-semibold'
+                          : 'bg-transparent text-editorial-dark/65 border-editorial-dark/15 hover:bg-editorial-dark/[0.02]'
+                      }`}
+                    >
+                      All Domains
+                    </button>
+                    {MILESTONE_CATEGORIES.map(cat => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setMilestoneFilter(cat.id)}
+                        className={`px-2.5 py-1 text-[9px] font-mono uppercase border cursor-pointer transition-colors ${
+                          milestoneFilter === cat.id
+                            ? 'bg-editorial-dark text-editorial-bg border-editorial-dark font-semibold'
+                            : 'bg-transparent text-editorial-dark/65 border-editorial-dark/15 hover:bg-editorial-dark/[0.02]'
+                        }`}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Filter list */}
+                {(() => {
+                  const filteredFeed = [...milestonesLast30Days]
+                    .reverse() // Newest first
+                    .filter(item => milestoneFilter === 'all' || (item.milestone.category || 'other') === milestoneFilter);
+
+                  if (filteredFeed.length === 0) {
+                    return (
+                      <p className="text-center text-xs font-sans text-editorial-dark/50 italic py-6">
+                        No milestones logged for this selected domain in the last 30 days.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[350px] overflow-y-auto pr-1">
+                      {filteredFeed.map((item, idx) => {
+                        const m = item.milestone;
+                        const catInfo = MILESTONE_CATEGORIES.find(c => c.id === (m.category || 'other')) || MILESTONE_CATEGORIES[3];
+                        const dateObj = new Date(item.date + 'T12:00:00');
+                        const formattedDate = dateObj.toLocaleDateString(undefined, { 
+                          weekday: 'short', 
+                          month: 'short', 
+                          day: 'numeric' 
+                        });
+
+                        return (
+                          <div 
+                            key={m.id || idx} 
+                            className="p-4 border border-editorial-dark/10 hover:border-editorial-dark/20 transition-all bg-editorial-bg flex flex-col justify-between space-y-3"
+                          >
+                            <div className="space-y-2">
+                              {/* Meta */}
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-mono text-editorial-dark/45 font-medium flex items-center gap-1">
+                                  <span>{formattedDate}</span>
+                                  <span>•</span>
+                                  <span>{m.time || '--:--'}</span>
+                                </span>
+                                
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {m.importance && (
+                                    <span className={`px-1 text-[8px] font-mono uppercase tracking-wider font-semibold border ${
+                                      m.importance === 'high' 
+                                        ? 'bg-rose-50 border-rose-200 text-rose-700' 
+                                        : m.importance === 'medium'
+                                        ? 'bg-amber-50 border-amber-200 text-amber-700'
+                                        : 'bg-editorial-dark/5 border-editorial-dark/10 text-editorial-dark/60'
+                                    }`}>
+                                      {m.importance}
+                                    </span>
+                                  )}
+                                  <span className={`px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider font-semibold bg-editorial-${catInfo.color}-light border border-editorial-${catInfo.color}/20 text-editorial-${catInfo.color}`}>
+                                    {catInfo.name}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Title */}
+                              <h5 className="font-serif font-semibold text-xs text-editorial-dark leading-snug">
+                                {m.text}
+                              </h5>
+                            </div>
+
+                            {/* Note */}
+                            {m.notes && (
+                              <p className="text-[11px] font-sans italic text-editorial-dark/60 bg-editorial-dark/[0.01] border-l-2 border-editorial-dark/10 pl-2.5 py-1">
+                                {m.notes}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            </>
+          )}
         </div>
       ) : (
         /* Dynamic Habit Heatmap Grid View */

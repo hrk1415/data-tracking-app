@@ -3544,7 +3544,7 @@ export default function App() {
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.25 }}
               >
-                <TrackerAnalytics trackers={trackers} logs={logs} />
+                <TrackerAnalytics trackers={trackers} logs={logs} reflections={reflections} />
               </motion.div>
             )}
 
