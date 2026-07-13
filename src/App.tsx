@@ -3475,6 +3475,9 @@ export default function App() {
                   trackers={trackers}
                   logs={logs}
                   onSaveGoalNote={handleSaveGoalNote}
+                  onSaveDailyReflection={handleSaveReflection}
+                  onSelectDate={setSelectedDate}
+                  selectedDate={selectedDate}
                 />
 
                 {/* Tracker Cards Grid Display */}
