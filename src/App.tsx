@@ -33,7 +33,7 @@ import { LucideIcon } from './components/LucideIcon';
 import { GoalNotesPanel } from './components/GoalNotesPanel';
 import { MotivationalQuote } from './components/MotivationalQuote';
 import { WeeklySummaryDashboardWidget } from './components/WeeklySummaryDashboardWidget';
-import { MonthlyGoalsSummary } from './components/MonthlyGoalsSummary';
+import { GoalCompletionCalendar } from './components/GoalCompletionCalendar';
 import { DateComparisonDashboardView } from './components/DateComparisonDashboardView';
 import {
   LayoutDashboard,
@@ -2965,8 +2965,8 @@ export default function App() {
                   selectedDate={selectedDate}
                 />
 
-                {/* Monthly Goals Summary */}
-                <MonthlyGoalsSummary
+                {/* Goal Completion Calendar */}
+                <GoalCompletionCalendar
                   trackers={trackers}
                   logs={logs}
                   selectedDate={selectedDate}
