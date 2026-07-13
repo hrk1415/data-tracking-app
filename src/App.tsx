@@ -8,6 +8,7 @@ import confetti from 'canvas-confetti';
 import { Tracker, LogEntry, CATEGORIES, COLOR_MAP, DailyReflection, Milestone, MILESTONE_CATEGORIES } from './types';
 import { loadData, saveTrackers, saveLogs, saveReflections, exportDataAsJson, importDataFromJson } from './utils/storage';
 import { importLogsFromCSV, parseCSV, ColumnMapping } from './utils/csvParser';
+import { exportDailyReport } from './utils/pdfExport';
 
 interface SavedPreset {
   id: string;
@@ -2454,6 +2455,26 @@ export default function App() {
 
                   {/* Elegant Calendar Switchers and Compare Toggle */}
                   <div className="flex flex-wrap items-center gap-4">
+                    {/* Download PDF Report Button */}
+                    <button
+                      type="button"
+                      onClick={() => exportDailyReport(
+                        selectedDate,
+                        trackers,
+                        logs,
+                        reflections,
+                        dailyStats,
+                        goalStreaks,
+                        totalLogsCount,
+                        selectedDateLogVolume
+                      )}
+                      className="flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-editorial-dark/20 hover:border-editorial-accent hover:bg-editorial-accent-light/40 hover:text-editorial-accent text-editorial-dark bg-transparent transition-all cursor-pointer font-bold shadow-xs"
+                      title="Export Daily Report as formatted editorial PDF"
+                    >
+                      <Download size={12} />
+                      <span>Download Report</span>
+                    </button>
+
                     {/* Compare Dates Toggle */}
                     <button
                       type="button"
