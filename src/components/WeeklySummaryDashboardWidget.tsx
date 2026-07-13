@@ -14,6 +14,7 @@ import {
   Calendar, 
   Flame, 
   TrendingUp, 
+  TrendingDown,
   Sparkles, 
   HelpCircle,
   Clock
@@ -67,10 +68,19 @@ export function WeeklySummaryDashboardWidget({
     // Chronological order (oldest to newest)
     last7Days.reverse();
 
+    const prev7Days: string[] = [];
+    for (let i = 7; i < 14; i++) {
+      const d = new Date(refDate.getTime() - i * 24 * 60 * 60 * 1000);
+      prev7Days.push(d.toISOString().split('T')[0]);
+    }
+    prev7Days.reverse();
+
     const weekLogs = logs.filter(l => last7Days.includes(l.date));
+    const prevWeekLogs = logs.filter(l => prev7Days.includes(l.date));
 
     const trackerStats = trackers.map(tracker => {
       const trackerWeekLogs = weekLogs.filter(l => l.trackerId === tracker.id);
+      const trackerPrevLogs = prevWeekLogs.filter(l => l.trackerId === tracker.id);
       const logsCount = trackerWeekLogs.length;
       const milestonesCount = trackerWeekLogs.filter(l => l.milestone && l.milestone.trim() !== '').length;
 
@@ -83,6 +93,49 @@ export function WeeklySummaryDashboardWidget({
           unit: tracker.unit || ''
         }));
 
+      // Calculate performance metric value for current and previous 7 days
+      const getAggregateValue = (t: Tracker, tLogs: LogEntry[]) => {
+        if (tLogs.length === 0) return 0;
+        
+        if (t.type === 'counter') {
+          return tLogs.reduce((sum, l) => sum + l.value, 0);
+        } else if (t.type === 'boolean') {
+          return tLogs.filter(l => l.value > 0).length;
+        } else { // 'numeric' or 'rating'
+          const sum = tLogs.reduce((sum, l) => sum + l.value, 0);
+          return sum / tLogs.length;
+        }
+      };
+
+      const currVal = getAggregateValue(tracker, trackerWeekLogs);
+      const prevVal = getAggregateValue(tracker, trackerPrevLogs);
+
+      let growth: number | null = null;
+      if (prevVal > 0) {
+        growth = Math.round(((currVal - prevVal) / prevVal) * 100);
+      } else if (currVal > 0) {
+        growth = 100; // went from 0 to some positive value, so +100% growth
+      } else if (trackerWeekLogs.length > 0 || trackerPrevLogs.length > 0) {
+        growth = 0; // both are 0 but there were logs
+      } else {
+        growth = null; // no activity in either week
+      }
+
+      const formatValue = (t: Tracker, val: number) => {
+        if (t.type === 'boolean') {
+          return `${val} day${val !== 1 ? 's' : ''}`;
+        }
+        if (t.type === 'counter') {
+          return `${val} ${t.unit || 'time'}${val !== 1 && !t.unit ? 's' : ''}`;
+        }
+        // Rating or Numeric
+        return `${val.toFixed(1)} ${t.unit || ''}`;
+      };
+
+      const tooltipTitle = growth !== null
+        ? `This week: ${formatValue(tracker, currVal)} | Last week: ${formatValue(tracker, prevVal)}`
+        : 'No activity logs in the last 14 days';
+
       return {
         id: tracker.id,
         name: tracker.name,
@@ -91,7 +144,11 @@ export function WeeklySummaryDashboardWidget({
         category: tracker.category,
         logsCount,
         milestonesCount,
-        milestones
+        milestones,
+        growth,
+        currVal,
+        prevVal,
+        tooltipTitle
       };
     });
 
@@ -291,12 +348,13 @@ export function WeeklySummaryDashboardWidget({
           >
             {/* Table layout of Trackers */}
             <div className="border border-editorial-dark/15 overflow-x-auto rounded-none bg-editorial-bg">
-              <table className="w-full text-left border-collapse min-w-[500px]">
+              <table className="w-full text-left border-collapse min-w-[580px]">
                 <thead>
                   <tr className="border-b border-editorial-dark/10 bg-editorial-dark/[0.02]">
                     <th className="px-4 py-2 text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest">Tracker Name</th>
                     <th className="px-4 py-2 text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest">Category</th>
                     <th className="px-4 py-2 text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest">Logs Recorded</th>
+                    <th className="px-4 py-2 text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest">WoW Trend</th>
                     <th className="px-4 py-2 text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest text-right">Milestones</th>
                   </tr>
                 </thead>
@@ -336,6 +394,30 @@ export function WeeklySummaryDashboardWidget({
                               />
                             </div>
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {stat.growth !== null ? (
+                            <div className="flex items-center gap-1.5" title={stat.tooltipTitle}>
+                              {stat.growth > 0 ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-editorial-emerald bg-editorial-emerald/10 border border-editorial-emerald/20 px-1.5 py-0.5 rounded-none">
+                                  <TrendingUp size={11} className="stroke-[2.5px]" />
+                                  <span>+{stat.growth}%</span>
+                                </span>
+                              ) : stat.growth < 0 ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-editorial-rose bg-editorial-rose/10 border border-editorial-rose/20 px-1.5 py-0.5 rounded-none">
+                                  <TrendingDown size={11} className="stroke-[2.5px]" />
+                                  <span>{stat.growth}%</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-editorial-dark/50 bg-editorial-dark/5 border border-editorial-dark/10 px-1.5 py-0.5 rounded-none">
+                                  <span className="w-1.5 h-0.5 bg-editorial-dark/40 block rounded-full" />
+                                  <span>0%</span>
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-mono text-editorial-dark/30 italic" title={stat.tooltipTitle}>—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {stat.milestonesCount > 0 ? (
