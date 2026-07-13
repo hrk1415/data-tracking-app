@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Tracker, LogEntry, COLOR_MAP } from '../types';
 import { LucideIcon } from './LucideIcon';
-import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown, LineChart as LineChartIcon, X, Info, Download, Trophy } from 'lucide-react';
+import { Plus, Minus, Check, MessageSquare, AlertCircle, Flame, ArrowUp, ArrowDown, LineChart as LineChartIcon, X, Info, Download, Trophy, Zap, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 import { calculateTrendAlert } from '../utils/trendAlerts';
@@ -153,6 +153,7 @@ export function TrackerCard({
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [showMilestoneForm, setShowMilestoneForm] = useState(false);
   const [milestoneInput, setMilestoneInput] = useState('');
+  const [showQuickMenu, setShowQuickMenu] = useState(false);
 
   // Calculate the last 30 days data
   const last30DaysData = React.useMemo(() => {
@@ -504,6 +505,153 @@ export function TrackerCard({
               >
                 <Trophy size={13} className={milestoneToday ? 'fill-amber-500/25' : ''} />
               </button>
+              
+              <div className="relative inline-block">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickMenu(!showQuickMenu)}
+                  className={`p-0.5 transition-all shrink-0 cursor-pointer ${
+                    showQuickMenu
+                      ? 'text-editorial-accent bg-editorial-accent-light/40'
+                      : 'text-editorial-dark/35 hover:text-editorial-accent hover:bg-editorial-accent-light/40'
+                  }`}
+                  title="Quick Actions Menu"
+                >
+                  <Zap size={13} className="fill-current animate-pulse" />
+                </button>
+                <AnimatePresence>
+                  {showQuickMenu && (
+                    <>
+                      {/* Backdrop to close the menu on click-away */}
+                      <div 
+                        className="fixed inset-0 z-40 cursor-default" 
+                        onClick={() => setShowQuickMenu(false)}
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute left-0 mt-1.5 w-52 bg-editorial-bg border border-editorial-dark/15 shadow-xl z-50 p-2 flex flex-col gap-1 rounded-none text-left"
+                      >
+                        <div className="px-2 py-1 border-b border-editorial-dark/10 mb-1 flex items-center justify-between">
+                          <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-editorial-dark/50">
+                            Quick Actions
+                          </span>
+                          <span className="text-[8px] font-mono bg-editorial-accent-light px-1 text-editorial-accent font-bold">
+                            {tracker.type}
+                          </span>
+                        </div>
+
+                        {/* Action 1: Log 1 / Quick Log */}
+                        {tracker.type !== 'boolean' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = tracker.type === 'rating' ? 5 : 1;
+                              onLogValue(tracker.id, val, "Logged via Quick Action");
+                              setShowQuickMenu(false);
+                            }}
+                            className="flex items-center gap-2 px-2 py-1.5 text-xs text-editorial-dark hover:bg-editorial-accent hover:text-editorial-bg transition-colors cursor-pointer group text-left rounded-none w-full"
+                          >
+                            <Plus size={12} className="shrink-0 text-editorial-accent group-hover:text-editorial-bg" />
+                            <div className="flex flex-col">
+                              <span className="font-sans font-medium text-[11px]">
+                                {tracker.type === 'rating' ? 'Log 5 Stars' : `Log 1 ${tracker.unit || ''}`}
+                              </span>
+                              <span className="text-[8px] opacity-70 font-mono">
+                                {tracker.type === 'rating' ? 'Submit full rating' : 'Quickly record single unit'}
+                              </span>
+                            </div>
+                          </button>
+                        )}
+
+                        {/* Action 2: Mark Completed */}
+                        {tracker.type === 'boolean' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onLogValue(tracker.id, currentValue === 1 ? 0 : 1, "Toggled via Quick Action");
+                              setShowQuickMenu(false);
+                            }}
+                            className="flex items-center gap-2 px-2 py-1.5 text-xs text-editorial-dark hover:bg-editorial-accent hover:text-editorial-bg transition-colors cursor-pointer group text-left rounded-none w-full"
+                          >
+                            <Check size={12} className="shrink-0 text-editorial-accent group-hover:text-editorial-bg" />
+                            <div className="flex flex-col text-left">
+                              <span className="font-sans font-medium text-[11px]">
+                                {currentValue === 1 ? 'Mark Incomplete' : 'Mark Completed'}
+                              </span>
+                              <span className="text-[8px] opacity-70 font-mono">
+                                {currentValue === 1 ? 'Reset state to inactive' : 'Set active progress today'}
+                              </span>
+                            </div>
+                          </button>
+                        )}
+
+                        {tracker.type !== 'boolean' && target && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (tracker.type === 'counter') {
+                                const needed = Math.max(0, target - currentValue);
+                                if (needed > 0) {
+                                  onLogValue(tracker.id, needed, `Logged remaining to meet goal (+${needed})`);
+                                }
+                              } else if (tracker.type === 'numeric') {
+                                onLogValue(tracker.id, target, `Logged target value (${target})`);
+                              } else if (tracker.type === 'rating') {
+                                onLogValue(tracker.id, 5, `Logged top rating`);
+                              }
+                              setShowQuickMenu(false);
+                            }}
+                            disabled={currentValue >= target}
+                            className="flex items-center gap-2 px-2 py-1.5 text-xs text-editorial-dark hover:bg-editorial-accent hover:text-editorial-bg transition-colors cursor-pointer group text-left rounded-none w-full disabled:opacity-40 disabled:pointer-events-none"
+                          >
+                            <Check size={12} className="shrink-0 text-editorial-emerald group-hover:text-editorial-bg" />
+                            <div className="flex flex-col text-left">
+                              <span className="font-sans font-medium text-[11px]">Mark Completed</span>
+                              <span className="text-[8px] opacity-70 font-mono">
+                                {currentValue >= target 
+                                  ? 'Goal already met' 
+                                  : tracker.type === 'counter'
+                                  ? `Log remaining ${target - currentValue} ${tracker.unit || ''}`
+                                  : `Set to target: ${target}`}
+                              </span>
+                            </div>
+                          </button>
+                        )}
+
+                        {/* Action 3: Clear Last Log */}
+                        {onDeleteLog && trackerLogs.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const latestLog = trackerLogs[trackerLogs.length - 1];
+                              onDeleteLog(latestLog.id);
+                              setShowQuickMenu(false);
+                            }}
+                            className="flex items-center gap-2 px-2 py-1.5 text-xs text-editorial-rose hover:bg-editorial-rose hover:text-editorial-bg transition-colors cursor-pointer group text-left rounded-none w-full border-t border-editorial-dark/10 mt-1"
+                          >
+                            <Trash2 size={12} className="shrink-0 text-editorial-rose group-hover:text-editorial-bg" />
+                            <div className="flex flex-col text-left">
+                              <span className="font-sans font-medium text-[11px]">Clear Last Log</span>
+                              <span className="text-[8px] opacity-70 font-mono text-left">
+                                Delete value: {trackerLogs[trackerLogs.length - 1].value}
+                              </span>
+                            </div>
+                          </button>
+                        )}
+                        
+                        {(!onDeleteLog || trackerLogs.length === 0) && (
+                          <div className="px-2 py-1.5 text-[10px] text-editorial-dark/40 italic font-mono border-t border-editorial-dark/10 mt-1 text-center select-none">
+                            No logs to clear today
+                          </div>
+                        )}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
             <p className="text-[9px] font-mono text-editorial-dark/50 uppercase tracking-widest mt-0.5">{tracker.category} tracker</p>
             {tracker.tags && tracker.tags.length > 0 && (
