@@ -536,3 +536,419 @@ export function exportDailyReport(
   // Save/Download Action triggers
   doc.save(`daily_progress_report_${date}.pdf`);
 }
+
+/**
+ * Renders the top header, decorative elements, background color, and page numbers
+ * to maintain a consistent weekly ledger layout.
+ */
+function initWeeklyPage(doc: jsPDF, pageNum: number, dateRangeLabel: string) {
+  // Page background: warm, elegant cream color
+  doc.setFillColor(249, 246, 240);
+  doc.rect(0, 0, 210, 297, 'F');
+  
+  // Decorative top border strip: rich terracotta accent color
+  doc.setFillColor(212, 93, 67); 
+  doc.rect(15, 12, 180, 2, 'F');
+  
+  // Top running header
+  doc.setFont('courier', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(110, 110, 110);
+  doc.text("WEEKLY PROGRESS LEDGER", 15, 9);
+  
+  doc.text(dateRangeLabel.toUpperCase(), 195, 9, { align: 'right' });
+
+  // Running footer details
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(140, 140, 140);
+  doc.text("WEEKLY PERFORMANCE & JOURNAL RECORDS", 15, 285);
+  doc.text(`Page ${pageNum}`, 195, 285, { align: 'right' });
+}
+
+export function exportWeeklyReport(
+  dateRangeLabel: string,
+  trackerStats: any[],
+  dailyStats: any[],
+  totalLogs: number,
+  totalMilestones: number,
+  allWeeklyMilestones: any[]
+) {
+  const doc = new jsPDF('p', 'mm', 'a4');
+  let pageNum = 1;
+  initWeeklyPage(doc, pageNum, dateRangeLabel);
+
+  let y = 25;
+
+  // 1. Document Title
+  doc.setFont('times', 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(28, 28, 28);
+  doc.text("The Weekly Progress Ledger", 15, y);
+  y += 6;
+
+  // Subtitle / slogan text
+  doc.setFont('times', 'italic');
+  doc.setFontSize(10.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text("A comprehensive performance audit, trend analysis, and milestone overview for the week.", 15, y);
+  y += 10;
+
+  // 2. Bento Stats Grid (4 Boxes)
+  const boxWidth = 42;
+  const boxGap = 4;
+  const boxHeight = 22;
+  const xStart = 15;
+
+  const activeCount = trackerStats.filter(s => s.logsCount > 0).length;
+  const positiveTrends = trackerStats.filter(s => s.growth !== null && s.growth > 0).length;
+
+  const statsData = [
+    {
+      title: "TOTAL LOGS",
+      val: `${totalLogs}`,
+      desc: "recorded log entries"
+    },
+    {
+      title: "MILESTONES",
+      val: `${totalMilestones}`,
+      desc: "achievements & breakthroughs"
+    },
+    {
+      title: "ACTIVE HABITS",
+      val: `${activeCount} / ${trackerStats.length}`,
+      desc: "trackers active this week"
+    },
+    {
+      title: "GROWING TRENDS",
+      val: `${positiveTrends} Habits`,
+      desc: "showing upward WoW trend"
+    }
+  ];
+
+  statsData.forEach((stat, idx) => {
+    const bx = xStart + idx * (boxWidth + boxGap);
+    
+    // Draw outer box border & background fill
+    doc.setFillColor(241, 237, 228); 
+    doc.setDrawColor(230, 223, 213); 
+    doc.setLineWidth(0.3);
+    doc.rect(bx, y, boxWidth, boxHeight, 'FD');
+    
+    // Draw Box header label
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(120, 120, 120);
+    doc.text(stat.title, bx + 3.5, y + 5);
+    
+    // Draw main statistic text value
+    doc.setFont('times', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(28, 28, 28);
+    doc.text(stat.val, bx + 3.5, y + 12);
+    
+    // Draw helper description text
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(6.5);
+    doc.setTextColor(110, 110, 110);
+    doc.text(stat.desc, bx + 3.5, y + 18.5);
+  });
+
+  y += boxHeight + 11;
+
+  // 3. Weekly Habit Trends Section
+  doc.setFont('times', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(212, 93, 67); 
+  doc.text("I. WEEKLY HABIT TRENDS & METRICS", 15, y);
+  y += 5;
+
+  // Thick accent separator line
+  doc.setDrawColor(212, 93, 67);
+  doc.setLineWidth(0.4);
+  doc.line(15, y, 195, y);
+  y += 4;
+
+  // Draw Table header row
+  doc.setFillColor(230, 223, 213);
+  doc.rect(15, y, 180, 6, 'F');
+
+  doc.setFont('courier', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(70, 70, 70);
+  doc.text("TRACKER / CATEGORY", 17, y + 4.2);
+  doc.text("LOGS RECORDED", 75, y + 4.2);
+  doc.text("CURRENT VALUE", 110, y + 4.2);
+  doc.text("WOW TREND", 145, y + 4.2);
+  doc.text("MILESTONES", 173, y + 4.2);
+  y += 6;
+
+  // Render rows
+  trackerStats.forEach(stat => {
+    const rowHeight = 10;
+
+    // Check for height page-break
+    if (y + rowHeight > 265) {
+      pageNum++;
+      doc.addPage();
+      initWeeklyPage(doc, pageNum, dateRangeLabel);
+      y = 25;
+      
+      // Reprint Table header
+      doc.setFillColor(230, 223, 213);
+      doc.rect(15, y, 180, 6, 'F');
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(70, 70, 70);
+      doc.text("TRACKER / CATEGORY", 17, y + 4.2);
+      doc.text("LOGS RECORDED", 75, y + 4.2);
+      doc.text("CURRENT VALUE", 110, y + 4.2);
+      doc.text("WOW TREND", 145, y + 4.2);
+      doc.text("MILESTONES", 173, y + 4.2);
+      y += 6;
+    }
+
+    // Row zebra background color
+    doc.setFillColor(245, 241, 234);
+    doc.rect(15, y, 180, rowHeight, 'F');
+    
+    // Bottom spacer border line
+    doc.setDrawColor(230, 223, 213);
+    doc.setLineWidth(0.18);
+    doc.line(15, y + rowHeight, 195, y + rowHeight);
+
+    // Render Metric Title details
+    doc.setFont('times', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(28, 28, 28);
+    doc.text(stat.name, 17, y + 4);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(110, 110, 110);
+    doc.text(stat.category.toUpperCase(), 17, y + 7.5);
+
+    // Render logs count
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(60, 60, 60);
+    doc.text(`${stat.logsCount} entries`, 75, y + 5.5);
+
+    // Render current value
+    const valText = stat.currVal !== undefined ? stat.currVal.toFixed(1) : "—";
+    doc.text(`${valText}`, 110, y + 5.5);
+
+    // Render WoW Trend badge/text
+    if (stat.growth !== null) {
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(7.5);
+      if (stat.growth > 0) {
+        doc.setTextColor(62, 142, 117); // Emerald
+        doc.text(`+${stat.growth}%`, 145, y + 5.5);
+      } else if (stat.growth < 0) {
+        doc.setTextColor(212, 93, 67); // Terracotta / Rose
+        doc.text(`${stat.growth}%`, 145, y + 5.5);
+      } else {
+        doc.setTextColor(110, 110, 110);
+        doc.text(`0%`, 145, y + 5.5);
+      }
+    } else {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text("—", 145, y + 5.5);
+    }
+
+    // Milestones column
+    if (stat.milestonesCount > 0) {
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(180, 130, 50); // Amber
+      doc.text(`${stat.milestonesCount} met`, 173, y + 5.5);
+    } else {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(180, 180, 180);
+      doc.text("None", 173, y + 5.5);
+    }
+
+    y += rowHeight;
+  });
+
+  y += 7;
+
+  // 4. Weekly Accomplishment Journal block
+  if (allWeeklyMilestones.length > 0) {
+    if (y + 16 > 265) {
+      pageNum++;
+      doc.addPage();
+      initWeeklyPage(doc, pageNum, dateRangeLabel);
+      y = 25;
+    }
+
+    // Header of Section
+    doc.setFont('times', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(212, 93, 67);
+    doc.text("II. WEEKLY ACCOMPLISHMENT JOURNAL", 15, y);
+    y += 5;
+
+    doc.setDrawColor(212, 93, 67);
+    doc.setLineWidth(0.4);
+    doc.line(15, y, 195, y);
+    y += 6;
+
+    allWeeklyMilestones.forEach((ms, index) => {
+      const dateObj = new Date(ms.date + 'T12:00:00');
+      const formattedDate = dateObj.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+      const msText = `"${ms.text}"`;
+      const textLines = doc.splitTextToSize(msText, 140);
+      
+      const blockHeight = textLines.length * 4.5 + 8;
+
+      // Check space
+      if (y + blockHeight > 265) {
+        pageNum++;
+        doc.addPage();
+        initWeeklyPage(doc, pageNum, dateRangeLabel);
+        y = 25;
+
+        doc.setDrawColor(212, 93, 67);
+        doc.setLineWidth(0.3);
+        doc.line(15, y, 195, y);
+        y += 6;
+      }
+
+      // Left bar
+      doc.setFillColor(230, 223, 213);
+      doc.rect(15, y, 1.5, blockHeight - 2, 'F');
+
+      // Date / Tracker metadata
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(110, 110, 110);
+      doc.text(`${formattedDate.toUpperCase()} — ${ms.trackerName.toUpperCase()}`, 20, y + 3);
+
+      // Quote text
+      doc.setFont('times', 'italic');
+      doc.setFontSize(9.5);
+      doc.setTextColor(28, 28, 28);
+      textLines.forEach((line: string, lIdx: number) => {
+        doc.text(line, 20, y + 7.5 + lIdx * 4.5);
+      });
+
+      y += blockHeight;
+    });
+  } else {
+    // Empty milestones state
+    if (y + 20 > 265) {
+      pageNum++;
+      doc.addPage();
+      initWeeklyPage(doc, pageNum, dateRangeLabel);
+      y = 25;
+    }
+
+    doc.setFont('times', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(212, 93, 67);
+    doc.text("II. WEEKLY ACCOMPLISHMENT JOURNAL", 15, y);
+    y += 5;
+
+    doc.setDrawColor(212, 93, 67);
+    doc.setLineWidth(0.4);
+    doc.line(15, y, 195, y);
+    y += 4;
+
+    doc.setFillColor(245, 241, 234);
+    doc.rect(15, y, 180, 10, 'F');
+
+    doc.setFillColor(180, 180, 180);
+    doc.rect(15, y, 1.5, 10, 'F');
+
+    doc.setFont('times', 'italic');
+    doc.setFontSize(9);
+    doc.setTextColor(120, 120, 120);
+    doc.text("No milestone achievements logged this week.", 22, y + 6.2);
+    y += 14;
+  }
+
+  y += 5;
+
+  // 5. Daily Activity Distribution
+  if (y + 25 > 265) {
+    pageNum++;
+    doc.addPage();
+    initWeeklyPage(doc, pageNum, dateRangeLabel);
+    y = 25;
+  }
+
+  doc.setFont('times', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(212, 93, 67);
+  doc.text("III. WEEKLY ACTIVITY DISTRIBUTION", 15, y);
+  y += 5;
+
+  doc.setDrawColor(212, 93, 67);
+  doc.setLineWidth(0.4);
+  doc.line(15, y, 195, y);
+  y += 4;
+
+  // List weekday activity logs
+  doc.setFillColor(245, 241, 234);
+  const distBoxHeight = 30;
+  doc.rect(15, y, 180, distBoxHeight, 'F');
+
+  doc.setFont('courier', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(110, 110, 110);
+  doc.text("DAILY FREQUENCY ANALYSIS", 18, y + 5);
+
+  const colWidth = 24;
+  dailyStats.forEach((day, idx) => {
+    const cx = 18 + idx * colWidth;
+    doc.setFont('times', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(28, 28, 28);
+    doc.text(day.label.toUpperCase(), cx, y + 12);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`${day.logsCount} logs`, cx, y + 17);
+
+    if (day.milestonesCount > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(180, 130, 50);
+      doc.text(`${day.milestonesCount} met`, cx, y + 21);
+    } else {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(160, 160, 160);
+      doc.text("0 met", cx, y + 21);
+    }
+  });
+
+  y += distBoxHeight + 8;
+
+  // 6. Signature section
+  if (y + 16 > 265) {
+    pageNum++;
+    doc.addPage();
+    initWeeklyPage(doc, pageNum, dateRangeLabel);
+    y = 25;
+  }
+
+  doc.setDrawColor(212, 93, 67);
+  doc.setLineWidth(0.3);
+  doc.line(80, y, 130, y);
+  y += 5;
+
+  doc.setFont('times', 'italic');
+  doc.setFontSize(8);
+  doc.setTextColor(130, 130, 130);
+  doc.text("Every habit forms a thread. Looking at the weekly tapestry charts a resilient path toward continuous growth.", 105, y, { align: 'center' });
+
+  // Save/Download Action triggers
+  doc.save(`weekly_progress_report_${dateRangeLabel.replace(/[\s–—-]+/g, '_')}.pdf`);
+}
+

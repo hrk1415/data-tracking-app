@@ -17,8 +17,10 @@ import {
   TrendingDown,
   Sparkles, 
   HelpCircle,
-  Clock
+  Clock,
+  Download
 } from 'lucide-react';
+import { exportWeeklyReport } from '../utils/pdfExport';
 import {
   BarChart,
   Bar,
@@ -279,7 +281,24 @@ export function WeeklySummaryDashboardWidget({
         </div>
 
         {/* Display Selector Toggles */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+          <button
+            type="button"
+            onClick={() => exportWeeklyReport(
+              dateRangeLabel,
+              trackerStats,
+              dailyStats,
+              totalLogs,
+              totalMilestones,
+              allWeeklyMilestones
+            )}
+            className="flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-editorial-dark/20 hover:border-editorial-accent hover:bg-editorial-accent-light/40 hover:text-editorial-accent text-editorial-dark bg-transparent transition-all cursor-pointer font-bold shadow-xs mr-2"
+            title="Export Weekly Summary & stats as standalone PDF"
+          >
+            <Download size={12} />
+            <span>Download Report</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setViewMode('overview')}
