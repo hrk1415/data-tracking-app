@@ -155,6 +155,11 @@ export function TrackerCard({
   const [milestoneInput, setMilestoneInput] = useState('');
   const [showQuickMenu, setShowQuickMenu] = useState(false);
 
+  // Sync note state with the latest saved log's note
+  React.useEffect(() => {
+    setNoteText(latestLogNote || '');
+  }, [latestLogNote]);
+
   // Calculate the last 30 days data
   const last30DaysData = React.useMemo(() => {
     const refDate = new Date(selectedDate + 'T12:00:00');
@@ -1286,82 +1291,65 @@ export function TrackerCard({
         </div>
       )}
 
-      {/* Note indicator and edit note input */}
+      {/* Always-visible Quick Note field */}
       <div className="mt-4 border-t border-editorial-dark/10 pt-3">
-        <AnimatePresence initial={false}>
-          {showNoteForm ? (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-2 overflow-hidden"
-            >
-              <textarea
-                rows={1}
-                placeholder="Add daily note/comment..."
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                className="w-full text-xs rounded-none border border-editorial-dark/20 px-3 py-1.5 bg-editorial-bg/50 focus:bg-editorial-bg outline-hidden focus:border-editorial-accent transition-colors resize-none"
-              />
-              <div className="flex justify-end gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowNoteForm(false);
-                    setNoteText('');
-                  }}
-                  className="text-[10px] font-mono font-medium text-editorial-dark/60 hover:text-editorial-dark px-2 py-1 rounded-none hover:bg-editorial-accent-light"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (noteText.trim()) {
-                      // If there is existing value logged, update latest log note
-                      if (trackerLogs.length > 0) {
-                        const latestLog = trackerLogs[trackerLogs.length - 1];
-                        onLogValue(tracker.id, latestLog.value, noteText.trim());
-                      } else {
-                        // Log a default base value depending on tracker type with note
-                        const baseVal = tracker.type === 'boolean' ? 1 : tracker.type === 'rating' ? 3 : 0;
-                        onLogValue(tracker.id, baseVal, noteText.trim());
-                      }
-                      setShowNoteForm(false);
-                      setNoteText('');
-                    }
-                  }}
-                  className="text-[10px] font-mono font-semibold bg-editorial-dark text-editorial-bg hover:bg-editorial-accent px-2.5 py-1 rounded-none transition-colors"
-                >
-                  Save Note
-                </button>
-              </div>
-            </motion.div>
-          ) : (
-            <div className="flex items-center justify-between text-[11px] text-editorial-dark/50">
-              <span className="italic truncate max-w-[80%] flex items-center gap-1">
-                {latestLogNote ? (
-                  <>
-                    <MessageSquare size={12} className="text-editorial-accent shrink-0" />
-                    <span className="text-editorial-dark/80 truncate">{latestLogNote}</span>
-                  </>
-                ) : (
-                  'No notes added'
-                )}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setNoteText(latestLogNote || '');
-                  setShowNoteForm(true);
-                }}
-                className="text-editorial-dark/70 hover:text-editorial-dark flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider transition-colors cursor-pointer"
-              >
-                {latestLogNote ? 'Edit Note' : '+ Note'}
-              </button>
-            </div>
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <MessageSquare size={11} className="text-editorial-accent shrink-0" />
+            <span className="text-[9px] font-mono uppercase tracking-wider text-editorial-dark/55">
+              Quick Note
+            </span>
+          </div>
+          {latestLogNote && (
+            <span className="text-[8px] font-mono bg-editorial-accent-light px-1 text-editorial-accent font-bold">
+              Saved
+            </span>
           )}
-        </AnimatePresence>
+        </div>
+        <div className="relative flex items-center gap-2">
+          <input
+            type="text"
+            placeholder={trackerLogs.length > 0 ? "Add specific details/comment today..." : "Log some progress to add details..."}
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.currentTarget.blur();
+              }
+            }}
+            onBlur={() => {
+              if (noteText.trim() !== (latestLogNote || '')) {
+                if (trackerLogs.length > 0) {
+                  const latestLog = trackerLogs[trackerLogs.length - 1];
+                  onLogValue(tracker.id, latestLog.value, noteText.trim() || undefined);
+                } else {
+                  // If no logs exist, create a default zero or boolean inactive log entry so the note can be stored
+                  const baseVal = tracker.type === 'boolean' ? 0 : tracker.type === 'rating' ? 0 : 0;
+                  onLogValue(tracker.id, baseVal, noteText.trim() || undefined);
+                }
+              }
+            }}
+            className="w-full bg-transparent border-0 border-b border-editorial-dark/15 hover:border-editorial-dark/30 focus:border-editorial-accent py-0.5 px-1 text-[11px] font-sans text-editorial-dark outline-hidden focus:ring-0 placeholder:text-editorial-dark/30 placeholder:italic transition-all"
+          />
+          {noteText.trim() !== (latestLogNote || '') && (
+            <button
+              type="button"
+              onClick={() => {
+                if (trackerLogs.length > 0) {
+                  const latestLog = trackerLogs[trackerLogs.length - 1];
+                  onLogValue(tracker.id, latestLog.value, noteText.trim() || undefined);
+                } else {
+                  const baseVal = tracker.type === 'boolean' ? 0 : tracker.type === 'rating' ? 0 : 0;
+                  onLogValue(tracker.id, baseVal, noteText.trim() || undefined);
+                }
+              }}
+              className="text-[10px] font-mono font-bold text-editorial-accent hover:text-editorial-accent-dark transition-colors cursor-pointer shrink-0"
+              title="Save Note"
+            >
+              Save
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Milestone & Achievement */}
