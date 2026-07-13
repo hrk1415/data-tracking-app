@@ -1392,6 +1392,59 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportStructuredJSON = () => {
+    // Sort logs chronologically by date and time
+    const sortedLogs = [...logs].sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      return (a.timestamp || '').localeCompare(b.timestamp || '');
+    });
+
+    const enrichedLogs = sortedLogs.map(l => {
+      const tracker = trackers.find(t => t.id === l.trackerId);
+      return {
+        id: l.id,
+        date: l.date,
+        value: l.value,
+        note: l.note || '',
+        timestamp: l.timestamp || '',
+        tracker: tracker ? {
+          id: tracker.id,
+          name: tracker.name,
+          type: tracker.type,
+          category: tracker.category,
+          unit: tracker.unit,
+          targetValue: tracker.targetValue,
+          description: tracker.description || ''
+        } : null
+      };
+    });
+
+    const exportDoc = {
+      format: 'structured-activity-logs',
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      summary: {
+        totalLogs: enrichedLogs.length,
+        totalTrackers: trackers.length,
+        dateRange: enrichedLogs.length > 0 ? {
+          start: enrichedLogs[0].date,
+          end: enrichedLogs[enrichedLogs.length - 1].date
+        } : null
+      },
+      logs: enrichedLogs
+    };
+
+    const dataStr = JSON.stringify(exportDoc, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `structured_activity_logs_${selectedDate}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const getCurrentlyVisibleLogs = () => {
     // Sort logs descending by timestamp or date, matching history tab
     const sortedLogs = [...logs].sort((a, b) => {
@@ -1741,14 +1794,26 @@ export default function App() {
                   </label>
 
                   {logs.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleExportCSV}
-                      className="flex items-center gap-1.5 bg-editorial-orange-light/10 hover:bg-editorial-orange-light/20 border border-editorial-orange/20 text-editorial-orange font-mono text-[10px] uppercase tracking-wider font-semibold px-3.5 py-2 transition-colors cursor-pointer"
-                    >
-                      <Download size={13} />
-                      Export Logs (CSV)
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleExportCSV}
+                        className="flex items-center gap-1.5 bg-editorial-orange-light/10 hover:bg-editorial-orange-light/20 border border-editorial-orange/20 text-editorial-orange font-mono text-[10px] uppercase tracking-wider font-semibold px-3.5 py-2 transition-colors cursor-pointer"
+                      >
+                        <Download size={13} />
+                        Export Logs (CSV)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleExportStructuredJSON}
+                        className="flex items-center gap-1.5 bg-editorial-accent-light/50 hover:bg-editorial-accent/25 border border-editorial-accent/35 text-editorial-accent font-mono text-[10px] uppercase tracking-wider font-semibold px-3.5 py-2 transition-colors cursor-pointer"
+                        title="Export logs with detailed tracker categories, units and target metadata in a structured JSON schema"
+                      >
+                        <Download size={13} />
+                        Export Structured Logs (JSON)
+                      </button>
+                    </>
                   )}
 
                   <button
